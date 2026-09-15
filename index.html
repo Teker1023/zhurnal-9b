@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B7A55">
-<title>Журнал 9-Б</title>
+<title>Журнал ФК</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Журнал 9-Б">
+<meta name="apple-mobile-web-app-title" content="Журнал ФК">
 <style>
 :root{
   --bg:#EEF2F0; --surface:#FFFFFF; --raise:#F7FAF8; --ink:#15201B; --muted:#5B6A63; --line:#D9E1DD;
@@ -47,9 +47,20 @@ button{cursor:pointer}
 /* header */
 .top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top)}
 .top .wrap{display:flex;flex-direction:column;gap:8px;padding-block:10px}
-.brand{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.brand b{font:600 20px/1 var(--display);letter-spacing:.01em}
-.brand span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.brand{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.brand > span{flex:0 0 auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.classes{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1 1 auto;min-width:0;padding:2px}
+.classes::-webkit-scrollbar{display:none}
+.classes button{flex:0 0 auto;height:38px;padding:0 13px;border-radius:99px;border:1px solid var(--line);background:var(--raise);font:600 17px/1 var(--display);color:var(--muted)}
+.classes button[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.classes button.add{padding:0 13px;font-size:22px;font-weight:400}
+.kv{margin:0;display:flex;flex-direction:column;gap:2px}
+.kv dt{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-top:6px}
+.kv dt:first-child{margin-top:0}
+.kv dd{margin:0;font-weight:600}
+.kv dd.bad{color:var(--bad)}
+.kv dd.warn{color:var(--warn)}
+.kv dd.ok{color:var(--accent)}
 .datebar{display:grid;grid-template-columns:44px 1fr 44px;gap:8px;align-items:center}
 .iconbtn{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--raise);font-size:22px;line-height:1}
 .datebtn{position:relative;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--raise);
@@ -183,7 +194,7 @@ table.j td.g{font-weight:700}
 <body>
 <header class="top">
   <div class="wrap">
-    <div class="brand"><b>9-Б · Фізична культура</b><span id="saved">збережено</span></div>
+    <div class="brand"><div class="classes" id="classes" role="tablist" aria-label="Клас"></div><span id="saved"></span></div>
     <div class="datebar">
       <button class="iconbtn" id="prev" aria-label="Попередній урок">‹</button>
       <label class="datebtn"><span id="dateLabel">—</span><small id="dateTag">урок</small>
@@ -214,8 +225,8 @@ table.j td.g{font-weight:700}
 <div id="print"></div>
 
 <script>
-const KEY = 'journal-9b-pe-v1';
-const NAMES = [];
+// Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
+const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -228,18 +239,34 @@ const short = s => { const d = parse(s); return pad2(d.getDate()) + '.' + pad2(d
 const long = s => { const d = parse(s); return WD[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; };
 const nm = n => { const p = n.trim().split(/\s+/); return { a: p.slice(0, 2).join(' '), b: p.slice(2).join(' ') }; };
 
-function fresh() {
-  return { v: 1, students: NAMES.map((n, i) => ({ id: 's' + (i + 1), name: n })), days: {}, safety: [], settings: { weekdays: [2, 4, 5], teacher: '' } };
+const newClass = (name, weekdays, names) => ({
+  id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  name: String(name).trim(), weekdays: weekdays && weekdays.length ? weekdays : [2, 4, 5],
+  students: (names || []).map((n, i) => ({ id: 's' + (i + 1), name: n })), days: {}, safety: []
+});
+const fresh = () => ({ v: 2, classes: [], cur: null, settings: { teacher: '' } });
+function migrate(o) {
+  if (o && o.v === 2 && Array.isArray(o.classes)) return o;
+  if (o && Array.isArray(o.students)) { // стара версія: лише 9-Б
+    const st = o.settings || {}, c = newClass('9-Б', st.weekdays);
+    Object.assign(c, { students: o.students, days: o.days || {}, safety: o.safety || [] });
+    return { v: 2, classes: [c], cur: c.id, settings: { teacher: st.teacher || '', lastBackup: st.lastBackup } };
+  }
+  return null;
 }
 function load() {
-  try { const t = localStorage.getItem(KEY); if (t) { const o = JSON.parse(t); if (o && o.students) return o; } } catch (e) {}
+  for (const k of [KEY, OLD_KEY]) {
+    try { const o = migrate(JSON.parse(localStorage.getItem(k))); if (o) return o; } catch (e) {}
+  }
   return fresh();
 }
 let S = load();
+const NOCLASS = { id: '', name: '', weekdays: [2, 4, 5], students: [], days: {}, safety: [] };
+const K = () => S.classes.find(c => c.id === S.cur) || S.classes[0] || NOCLASS;
 function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(S));
-    $('#saved').textContent = 'збережено ' + new Date().toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
+    $('#saved').textContent = '✓ ' + new Date().toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     $('#saved').textContent = 'НЕ ЗБЕРЕЖЕНО';
     toast('Не вдалося зберегти. Зробіть резервну копію у вкладці «Журнал».');
@@ -248,15 +275,15 @@ function save() {
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 
 const ui = { tab: 'roll', mode: 'start', date: iso(new Date()) };
-const active = () => S.students.filter(s => !s.archived);
-const isLesson = s => S.settings.weekdays.includes(parse(s).getDay());
+const active = () => K().students.filter(s => !s.archived);
+const isLesson = s => K().weekdays.includes(parse(s).getDay());
 function stepLesson(s, dir) {
   const d = parse(s);
-  for (let i = 0; i < 14; i++) { d.setDate(d.getDate() + dir); if (S.settings.weekdays.includes(d.getDay())) return iso(d); }
+  for (let i = 0; i < 14; i++) { d.setDate(d.getDate() + dir); if (K().weekdays.includes(d.getDay())) return iso(d); }
   return s;
 }
-const day = s => S.days[s] || (S.days[s] = { start: {}, end: {}, grades: {} });
-const peek = s => S.days[s] || { start: {}, end: {}, grades: {} };
+const day = s => K().days[s] || (K().days[s] = { start: {}, end: {}, grades: {} });
+const peek = s => K().days[s] || { start: {}, end: {}, grades: {} };
 // '' не відмічено, p присутній, a відсутній, l пішов з уроку (був на початку, нема в кінці)
 function status(s, id) {
   const d = peek(s), v = d.start[id];
@@ -281,6 +308,10 @@ $('#scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeS
 /* ---------- шапка, вкладки ---------- */
 function renderHeader() {
   const today = ui.date === iso(new Date()), L = isLesson(ui.date), tag = $('#dateTag');
+  const cl = $('#classes'), sl = cl.scrollLeft;
+  cl.innerHTML = S.classes.map(c => `<button role="tab" data-class="${c.id}" aria-selected="${c.id === K().id}">${esc(c.name)}</button>`).join('') +
+    '<button class="add" data-class="+" aria-label="Додати клас">+</button>';
+  cl.scrollLeft = sl;
   $('#dateLabel').textContent = long(ui.date);
   tag.textContent = !L ? 'поза розкладом' : today ? 'сьогодні' : 'урок';
   tag.className = L ? '' : 'off';
@@ -288,6 +319,12 @@ function renderHeader() {
 }
 $('#prev').onclick = () => { ui.date = stepLesson(ui.date, -1); render(); };
 $('#next').onclick = () => { ui.date = stepLesson(ui.date, 1); render(); };
+$('#classes').addEventListener('click', e => {
+  const b = e.target.closest('[data-class]');
+  if (!b) return;
+  if (b.dataset.class === '+') return classSheet();
+  S.cur = b.dataset.class; save(); render();
+});
 $('#dateInput').addEventListener('click', e => { try { e.target.showPicker(); } catch (err) {} });
 $('#dateInput').addEventListener('change', e => { if (e.target.value) { ui.date = e.target.value; render(); } });
 document.querySelectorAll('.tabs [data-tab]').forEach(b => b.onclick = () => { ui.tab = b.dataset.tab; render(); scrollTo(0, 0); });
@@ -299,19 +336,51 @@ function render() {
     $('#view-' + t).hidden = t !== ui.tab;
     document.querySelector('.tabs [data-tab="' + t + '"]').setAttribute('aria-selected', t === ui.tab);
   }
-  if (!active().length && ui.tab !== 'journal') renderSetup($('#view-' + ui.tab));
+  const el = $('#view-' + ui.tab);
+  if (!S.classes.length) renderStart(el);
+  else if (!active().length && ui.tab !== 'journal') renderSetup(el);
   else views[ui.tab]();
 }
 
+function renderStart(el) {
+  el.innerHTML = `<div class="card"><div class="label">Перший запуск</div><h2>Додайте класи</h2>
+    <p>Надішліть собі на телефон файл «Класи ФК — списки учнів.json» і відкрийте його тут. Усі класи зі списками учнів додадуться одразу.</p>
+    <button class="btn primary" data-act="restore">Відкрити файл</button>
+    <input type="file" id="restoreFile" hidden>
+    <p>Або створіть клас вручну.</p>
+    <button class="btn" data-act="addClass">Створити клас</button></div>`;
+}
+
+function classSheet() {
+  const sh = openSheet(`<h3>Новий клас</h3>
+    <div class="field"><label class="label" for="ncName">Назва класу</label><input id="ncName" type="text" placeholder="Наприклад, 10-А"></div>
+    <div class="field"><span class="label">Дні уроків</span><div class="days">` +
+      [1, 2, 3, 4, 5, 6].map(n => `<label><input type="checkbox" name="ncWd" value="${n}"${[2, 4, 5].includes(n) ? ' checked' : ''}>${WD[n]}</label>`).join('') + `</div></div>
+    <div class="field"><label class="label" for="ncList">Учні, по одному в рядку</label><textarea id="ncList" spellcheck="false"></textarea></div>
+    <div class="actions"><button class="btn" data-c="close">Скасувати</button><button class="btn primary" data-c="save">Створити клас</button></div>`);
+  sh.onclick = e => {
+    const b = e.target.closest('[data-c]');
+    if (!b) return;
+    if (b.dataset.c === 'close') return closeSheet();
+    const name = sh.querySelector('#ncName').value.trim();
+    if (!name) return toast('Вкажіть назву класу');
+    if (S.classes.some(c => c.name.toLowerCase() === name.toLowerCase())) return toast('Клас ' + name + ' уже є');
+    const wd = [...sh.querySelectorAll('input[name=ncWd]:checked')].map(x => +x.value);
+    const names = sh.querySelector('#ncList').value.split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
+    const c = newClass(name, wd, names);
+    S.classes.push(c); S.cur = c.id; save(); closeSheet(); render(); toast('Клас ' + name + ' додано');
+  };
+}
+
 function renderSetup(el) {
-  el.innerHTML = `<div class="card"><div class="label">Перший запуск</div><h2>Додайте список учнів</h2>
+  el.innerHTML = `<div class="card"><div class="label">Клас ${esc(K().name)}</div><h2>Додайте список учнів</h2>
     <p>Скопіюйте прізвища з таблиці класу і вставте сюди, по одному учню в рядку. Список зберігається лише на цьому телефоні.</p>
     <div class="field"><label class="label" for="stuText">Учні класу</label>
       <textarea id="stuText" spellcheck="false" placeholder="Прізвище Ім’я По батькові&#10;Прізвище Ім’я По батькові&#10;…"></textarea></div>
     <button class="btn primary" data-act="saveStudents">Зберегти список</button>
-    <p>Або перенесіть усі дані з іншого телефона.</p>
-    <button class="btn" data-act="restore">Відновити з резервної копії</button>
-    <input type="file" id="restoreFile" accept=".json,application/json" hidden></div>`;
+    <p>Або відкрийте файл зі списками класів чи резервну копію.</p>
+    <button class="btn" data-act="restore">Відкрити файл</button>
+    <input type="file" id="restoreFile" hidden></div>`;
 }
 
 const acts = {};
@@ -346,6 +415,7 @@ function renderRoll() {
         const v = d.start[s.id];
         return studentRow(s, i, 'tStart', v === true ? mk('p', '✓') : v === false ? mk('a', 'н') : mk('', '—'));
       }).join('') + '</ul>';
+    if (p && !u) h += '<button class="btn primary" data-act="mode" data-v="end">Далі: кінець уроку</button>';
   } else {
     const present = st.filter(s => d.start[s.id] === true);
     if (!present.length) {
@@ -363,6 +433,7 @@ function renderRoll() {
           ? `<div class="alert" role="status"><h3>Немає на перекличці: ${miss.length}</h3><ol>${miss.map(s => `<li>${esc(nm(s.name).a)}</li>`).join('')}</ol></div>`
           : `<div class="alert good" role="status"><h3>Усі, хто був на початку, на місці</h3></div>`;
       }
+      h += saveBlock(ui.date);
       h += `<div class="actions"><button class="btn primary" data-act="allEnd">Всі на місці</button>
         <button class="btn danger small" data-act="resetEnd">Скинути</button></div>
         <div class="label">Торкніться учня, який є в кінці уроку</div>
@@ -376,6 +447,10 @@ function renderRoll() {
           absent.map(s => studentRow(s, st.indexOf(s), '', d.start[s.id] === false ? mk('a', 'н') : mk('', '—'), null, true)).join('');
       }
       h += '</ul>';
+      const sv = d.saved;
+      if (!sv || !sameSnap(sv, lessonSnapshot(ui.date))) {
+        h += `<button class="btn primary" data-act="saveLesson">${sv ? 'Оновити збереження уроку' : 'Зберегти урок'}</button>`;
+      }
     }
   }
   $('#view-roll').innerHTML = h;
@@ -388,6 +463,61 @@ acts.resetStart = () => { if (confirm('Скинути перекличку на 
 acts.tEnd = b => { const d = day(ui.date), id = b.dataset.id; d.end[id] = d.end[id] !== true; save(); render(); };
 acts.allEnd = () => { const d = day(ui.date); active().forEach(s => { if (d.start[s.id] === true) d.end[s.id] = true; }); save(); render(); };
 acts.resetEnd = () => { if (confirm('Скинути перекличку в кінці уроку?')) { day(ui.date).end = {}; save(); render(); } };
+
+/* ---------- збереження уроку (звіт) ---------- */
+function lessonSnapshot(date) {
+  const d = peek(date), st = active(), endChecked = Object.keys(d.end).length > 0;
+  const names = f => st.filter(f).map(s => s.name);
+  return {
+    total: st.length,
+    present: st.filter(s => d.start[s.id] === true).length,
+    absent: names(s => d.start[s.id] === false),
+    left: endChecked ? names(s => d.start[s.id] === true && d.end[s.id] !== true) : [],
+    unmarked: names(s => d.start[s.id] === undefined),
+    endChecked
+  };
+}
+const sameSnap = (a, b) => JSON.stringify(Object.assign({}, a, { at: 0 })) === JSON.stringify(Object.assign({}, b, { at: 0 }));
+const timeOf = ts => new Date(ts).toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
+const allHere = r => r.endChecked && !r.absent.length && !r.left.length && !r.unmarked.length;
+
+function reportHtml(r) {
+  const row = (k, list, c) => list.length ? `<dt>${k}: ${list.length}</dt><dd class="${c}">${list.map(n => esc(nm(n).a)).join(', ')}</dd>` : '';
+  return `<dl class="kv"><dt>Присутні</dt><dd>${r.present} з ${r.total}</dd>` +
+    row('Відсутні', r.absent, 'bad') + row('Пішли з уроку', r.left, 'warn') + row('Не відмічені', r.unmarked, '') +
+    (allHere(r) ? '<dt>Підсумок</dt><dd class="ok">Усі учні були на всьому уроці</dd>' : '') +
+    (r.endChecked ? '' : '<dt>Увага</dt><dd class="warn">Кінець уроку не перевірявся</dd>') + '</dl>';
+}
+function reportText(date, r) {
+  const L = [`${K().name} · Фізична культура · ${long(date)} ${date.slice(0, 4)}`, `Присутні: ${r.present} з ${r.total}`];
+  const add = (k, list) => { if (list.length) L.push(`${k} (${list.length}): ${list.map(n => nm(n).a).join(', ')}`); };
+  add('Відсутні', r.absent); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked);
+  if (allHere(r)) L.push('Усі учні були на всьому уроці.');
+  if (!r.endChecked) L.push('Кінець уроку не перевірявся.');
+  return L.join('\n');
+}
+function saveBlock(date) {
+  const sv = peek(date).saved;
+  if (sv && sameSnap(sv, lessonSnapshot(date))) {
+    return `<div class="card"><div class="label">Урок збережено о ${timeOf(sv.at)}</div>${reportHtml(sv)}
+      <button class="btn" data-act="shareReport" data-date="${date}">Поділитися звітом</button></div>`;
+  }
+  return `<div class="card"><div class="label">${sv ? 'Після збереження були зміни' : 'Урок ще не збережено'}</div>
+    <p>Зберігає звіт уроку: скільки було учнів, кого не було і хто пішов до кінця уроку.</p>
+    <button class="btn primary" data-act="saveLesson">${sv ? 'Оновити збереження уроку' : 'Зберегти урок'}</button></div>`;
+}
+acts.saveLesson = () => {
+  const snap = lessonSnapshot(ui.date);
+  if (!snap.present && !snap.absent.length) return toast('Спочатку відмітьте учнів на початку уроку');
+  if (!snap.endChecked && !confirm('Кінець уроку ще не перевірено. Зберегти лише перекличку на початку?')) return;
+  day(ui.date).saved = Object.assign(snap, { at: Date.now() });
+  save(); render(); scrollTo({ top: 0, behavior: 'smooth' }); toast('Урок збережено');
+};
+acts.shareReport = b => {
+  const date = b.dataset.date, text = reportText(date, peek(date).saved);
+  if (navigator.share) navigator.share({ text }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Звіт скопійовано'), () => {});
+};
 
 /* ---------- оцінки ---------- */
 function renderGrades() {
@@ -406,7 +536,7 @@ function renderGrades() {
 acts.grade = b => gradeSheet(b.dataset.id);
 
 function gradeSheet(id) {
-  const s = S.students.find(x => x.id === id), cur = peek(ui.date).grades[id] || '';
+  const s = K().students.find(x => x.id === id), cur = peek(ui.date).grades[id] || '';
   const levels = [['початковий', 1], ['середній', 4], ['достатній', 7], ['високий', 10]];
   const sh = openSheet(`<div><div class="label">${long(ui.date)} · оцінка</div><h3>${esc(s.name)}</h3></div>
     <div class="pad" style="grid-template-columns:auto repeat(3,1fr);align-items:center">` +
@@ -438,7 +568,7 @@ const TOPICS = [
   'Техніка безпеки під час занять на свіжому повітрі в холодну пору року'
 ];
 function weekStart(s) { const d = parse(s); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return iso(d); }
-const weekRec = s => S.safety.find(r => weekStart(r.date) === weekStart(s));
+const weekRec = s => K().safety.find(r => weekStart(r.date) === weekStart(s));
 const SW = 600, SH = 200;
 const svgSig = p => `<svg viewBox="0 0 ${SW} ${SH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="підпис"><path d="${p}" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const schoolYear = s => { const d = parse(s), y = d.getFullYear(); return d.getMonth() >= 7 ? y + '/' + (y + 1) : (y - 1) + '/' + y; };
@@ -468,7 +598,7 @@ function renderSafety() {
         rec.signs[s.id] ? `<span class="sig">${svgSig(rec.signs[s.id])}</span>` : mk('', 'підпис'),
         status(rec.date, s.id) === 'a' ? 'відсутній на уроці' : null)).join('') + '</ul>';
   }
-  const all = [...S.safety].sort((a, b) => b.date.localeCompare(a.date));
+  const all = [...K().safety].sort((a, b) => b.date.localeCompare(a.date));
   if (all.length) {
     h += `<div class="card"><h2>Усі інструктажі</h2><div class="hist">` + all.map(r =>
       `<button data-act="safetyGo" data-date="${r.date}"><span><b>${short(r.date)}</b> · ${esc(r.topic)}</span><span class="chip">${st.filter(s => r.signs[s.id]).length}/${st.length}</span></button>`).join('') +
@@ -482,19 +612,19 @@ acts.safetyNew = () => {
   if (!topic) return toast('Вкажіть тему інструктажу');
   const by = $('#sfBy').value.trim();
   S.settings.teacher = by;
-  S.safety.push({ id: 't' + Date.now().toString(36), date: ui.date, topic, by, signs: {} });
+  K().safety.push({ id: 't' + Date.now().toString(36), date: ui.date, topic, by, signs: {} });
   save(); render();
 };
 acts.safetyDel = () => {
   const rec = weekRec(ui.date);
-  if (rec && confirm('Видалити запис інструктажу разом з усіма підписами?')) { S.safety = S.safety.filter(r => r !== rec); save(); render(); }
+  if (rec && confirm('Видалити запис інструктажу разом з усіма підписами?')) { K().safety = K().safety.filter(r => r !== rec); save(); render(); }
 };
 acts.safetyGo = b => { ui.date = b.dataset.date; render(); scrollTo(0, 0); };
 acts.sign = b => signSheet(b.dataset.id);
 acts.print = () => { buildPrint(); window.print(); };
 
 function signSheet(id) {
-  const rec = weekRec(ui.date), s = S.students.find(x => x.id === id);
+  const rec = weekRec(ui.date), s = K().students.find(x => x.id === id);
   const sh = openSheet(`<div><div class="label">Інструктаж ${short(rec.date)}</div><h3>${esc(s.name)}</h3></div>
     <p style="margin:0;color:var(--muted)">З інструкцією «${esc(rec.topic)}» ознайомлений(а). Розпишіться пальцем у рамці.</p>
     <div class="signbox"><div class="base"></div><canvas></canvas></div>
@@ -540,10 +670,10 @@ function signSheet(id) {
 }
 
 function buildPrint() {
-  const st = active(), recs = [...S.safety].sort((a, b) => a.date.localeCompare(b.date));
+  const st = active(), recs = [...K().safety].sort((a, b) => a.date.localeCompare(b.date));
   const full = s => short(s) + '.' + s.slice(0, 4);
   $('#print').innerHTML = `<h1>Журнал реєстрації інструктажів з безпеки життєдіяльності</h1>
-    <p>9-Б клас · Фізична культура · ${schoolYear(recs[0] ? recs[0].date : ui.date)} н. р.</p>` +
+    <p>${esc(K().name)} клас · Фізична культура · ${schoolYear(recs[0] ? recs[0].date : ui.date)} н. р.</p>` +
     recs.map(r => `<table><thead><tr><th colspan="5" style="text-align:left">${full(r.date)} · ${esc(r.topic)}${r.by ? ' · Інструктаж провів: ' + esc(r.by) : ''}</th></tr>
       <tr><th style="width:28px">№</th><th>Прізвище, ім’я, по батькові учня</th><th style="width:80px">Дата</th><th style="width:110px">Підпис учня</th><th style="width:110px">Підпис учителя</th></tr></thead><tbody>` +
       st.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.name)}</td><td>${full(r.date)}</td><td>${r.signs[s.id] ? svgSig(r.signs[s.id]) : ''}</td><td></td></tr>`).join('') +
@@ -552,7 +682,7 @@ function buildPrint() {
 
 /* ---------- журнал ---------- */
 const MN = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
-const lessonDates = () => Object.keys(S.days).filter(k => Object.keys(S.days[k].start).length || Object.keys(S.days[k].grades).length).sort();
+const lessonDates = () => Object.keys(K().days).filter(k => Object.keys(K().days[k].start).length || Object.keys(K().days[k].grades).length).sort();
 function cell(date, id) { const g = peek(date).grades[id], s = status(date, id); return g || (s === 'a' ? 'н' : s === 'l' ? 'п' : ''); }
 const cls = v => v === 'н' ? 'a' : v === 'п' ? 'l' : v ? 'g' : '';
 function avgOf(dates, id) {
@@ -578,29 +708,49 @@ function renderJournal() {
       `</tbody></table></div>
       <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
   }
+  const savedDates = dates.filter(x => peek(x).saved).reverse();
+  if (savedDates.length) {
+    h += `<div class="card"><h2>Збережені уроки ${esc(K().name)}</h2><div class="hist">` + savedDates.map(x => {
+      const r = peek(x).saved;
+      return `<button data-act="jgo" data-date="${x}"><span><b>${short(x)}</b> ${WD[parse(x).getDay()]} · присутні ${r.present}/${r.total}</span><span class="tally">` +
+        (r.absent.length ? `<span class="chip bad">н ${r.absent.length}</span>` : '') +
+        (r.left.length ? `<span class="chip warn">п ${r.left.length}</span>` : '') +
+        (allHere(r) ? '<span class="chip ok">усі</span>' : '') + '</span></button>';
+    }).join('') + '</div></div>';
+  }
   const lb = S.settings.lastBackup;
   h += `<div class="card"><h2>Збереження даних</h2>
     <p>Журнал зберігається лише на цьому телефоні, в цьому браузері. Раз на тиждень робіть резервну копію і пересилайте її собі.</p>
     <div class="tally" style="justify-content:flex-start"><span class="chip ${lb ? 'ok' : 'warn'}">${lb ? 'остання копія ' + short(lb) : 'копію ще не робили'}</span></div>
     <div class="actions"><button class="btn primary" data-act="xlsx">Експорт в Excel</button><button class="btn" data-act="backup">Резервна копія</button></div>
-    <button class="btn" data-act="restore">Відновити з копії</button>
-    <input type="file" id="restoreFile" accept=".json,application/json" hidden></div>
-    <div class="card"><h2>Налаштування</h2>
+    <button class="btn" data-act="restore">Відкрити файл: копія або списки класів</button>
+    <input type="file" id="restoreFile" hidden></div>
+    <div class="card"><h2>Налаштування класу ${esc(K().name)}</h2>
+    <div class="field"><label class="label" for="className">Назва класу</label><input id="className" type="text" value="${esc(K().name)}"></div>
     <div class="field"><span class="label">Дні уроків</span><div class="days">` +
-      [1, 2, 3, 4, 5, 6].map(n => `<label><input type="checkbox" name="wd" value="${n}"${S.settings.weekdays.includes(n) ? ' checked' : ''}>${WD[n]}</label>`).join('') +
+      [1, 2, 3, 4, 5, 6].map(n => `<label><input type="checkbox" name="wd" value="${n}"${K().weekdays.includes(n) ? ' checked' : ''}>${WD[n]}</label>`).join('') +
     `</div></div>
     <div class="field"><label class="label" for="stuText">Список учнів (по одному в рядку)</label>
       <textarea id="stuText" spellcheck="false">${esc(st.map(s => s.name).join('\n'))}</textarea></div>
-    <button class="btn" data-act="saveStudents">Зберегти список учнів</button></div>`;
+    <button class="btn" data-act="saveStudents">Зберегти список учнів</button>
+    <button class="btn danger" data-act="delClass">Видалити клас ${esc(K().name)}</button></div>`;
   $('#view-journal').innerHTML = h;
 }
 
 acts.jm = b => { ui.jm = b.dataset.v; render(); };
-acts.jgo = b => { ui.date = b.dataset.date; ui.tab = 'roll'; render(); scrollTo(0, 0); };
+acts.jgo = b => { ui.date = b.dataset.date; ui.tab = 'roll'; ui.mode = peek(ui.date).saved ? 'end' : 'start'; render(); scrollTo(0, 0); };
 acts.restore = b => b.closest('.view').querySelector('input[type=file]').click();
+acts.addClass = () => classSheet();
+acts.delClass = () => {
+  const c = K();
+  if (!confirm(`Видалити клас ${c.name} разом з усіма відмітками, оцінками й підписами? Скасувати це не можна.`)) return;
+  S.classes = S.classes.filter(x => x !== c);
+  S.cur = S.classes[0] ? S.classes[0].id : null;
+  save(); render(); scrollTo(0, 0); toast('Клас ' + c.name + ' видалено');
+};
 acts.backup = () => {
   S.settings.lastBackup = iso(new Date()); save();
-  download(new Blob([JSON.stringify(S)], { type: 'application/json' }), 'Журнал 9-Б резервна копія ' + iso(new Date()) + '.json');
+  download(new Blob([JSON.stringify(S)], { type: 'application/json' }), 'Журнал ФК резервна копія ' + iso(new Date()) + '.json');
   render();
 };
 acts.saveStudents = b => {
@@ -608,30 +758,43 @@ acts.saveStudents = b => {
   if (!lines.length) return toast('Список порожній');
   const used = new Set(), next = [];
   lines.forEach(n => {
-    let s = S.students.find(x => x.name === n && !used.has(x.id));
+    let s = K().students.find(x => x.name === n && !used.has(x.id));
     if (!s) s = { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: n };
     used.add(s.id); next.push({ id: s.id, name: n });
   });
-  S.students.forEach(s => { if (!used.has(s.id)) next.push({ id: s.id, name: s.name, archived: true }); });
-  S.students = next; save(); render(); toast('Список учнів збережено');
+  K().students.forEach(s => { if (!used.has(s.id)) next.push({ id: s.id, name: s.name, archived: true }); });
+  K().students = next; save(); render(); toast('Список учнів збережено');
 };
 
 $('main').addEventListener('change', e => {
   const t = e.target;
+  if (t.id === 'className' && t.value.trim()) { K().name = t.value.trim(); save(); render(); }
   if (t.id === 'sfTopic') $('#sfOtherWrap').hidden = t.value !== '__other';
-  if (t.name === 'wd') { S.settings.weekdays = [...document.querySelectorAll('input[name=wd]:checked')].map(x => +x.value); save(); renderHeader(); }
+  if (t.name === 'wd') { K().weekdays = [...document.querySelectorAll('input[name=wd]:checked')].map(x => +x.value); save(); renderHeader(); }
   if (t.id === 'restoreFile' && t.files[0]) {
     const fr = new FileReader();
     fr.onload = () => {
-      try {
-        const o = JSON.parse(fr.result);
-        if (!o || !Array.isArray(o.students) || !o.days) throw 0;
-        if (!confirm('Замінити всі дані на цьому телефоні даними з копії?')) return;
-        S = o; S.safety = S.safety || []; S.settings = Object.assign({ weekdays: [2, 4, 5], teacher: '' }, S.settings);
-        save(); render(); toast('Дані відновлено');
-      } catch (err) { toast('Цей файл не схожий на резервну копію журналу'); }
+      let o = null;
+      try { o = JSON.parse(fr.result); } catch (err) {}
+      // Файл зі списками класів: додаємо лише нові класи, наявні дані не чіпаємо
+      if (o && o.type === 'pe-classes' && Array.isArray(o.classes)) {
+        let added = 0;
+        o.classes.forEach(x => {
+          const ex = S.classes.find(c => c.name.toLowerCase() === String(x.name).trim().toLowerCase());
+          if (!ex) { S.classes.push(newClass(x.name, x.weekdays, x.students)); added++; }
+          else if (!ex.students.length) { ex.students = newClass(x.name, x.weekdays, x.students).students; added++; }
+        });
+        if (!S.classes.some(c => c.id === S.cur)) S.cur = S.classes[0] && S.classes[0].id;
+        save(); render(); toast(added ? 'Додано класів: ' + added : 'Усі класи з файлу вже є');
+        return;
+      }
+      const m = migrate(o);
+      if (!m) return toast('Цей файл не схожий ні на резервну копію, ні на списки класів');
+      if (!confirm('Замінити всі дані на цьому телефоні даними з резервної копії?')) return;
+      S = m; save(); render(); toast('Дані відновлено');
     };
     fr.readAsText(t.files[0]);
+    t.value = '';
   }
 });
 
@@ -706,7 +869,7 @@ function buildXlsx(sheets) {
 }
 const num = v => /^\d+$/.test(v) ? +v : v;
 
-acts.xlsx = () => {
+function classSheets() {
   const st = active(), dates = lessonDates();
   const journal = [['№', 'Прізвище, ім’я, по батькові', ...dates.map(short), 'Пропуски (н)', 'Пішов з уроку (п)', 'Середній бал']];
   st.forEach((s, i) => journal.push([i + 1, s.name, ...dates.map(x => num(cell(x, s.id))),
@@ -721,13 +884,35 @@ acts.xlsx = () => {
     });
   });
   const safety = [['Дата', 'Тема інструктажу', 'Провів', '№', 'Учень', 'Підпис']];
-  [...S.safety].sort((a, b) => a.date.localeCompare(b.date)).forEach(r =>
+  [...K().safety].sort((a, b) => a.date.localeCompare(b.date)).forEach(r =>
     st.forEach((s, i) => safety.push([short(r.date) + '.' + r.date.slice(0, 4), r.topic, r.by || '', i + 1, s.name, r.signs[s.id] ? 'підписано' : '—'])));
-  download(buildXlsx([
-    { name: 'Журнал', rows: journal, widths: [5, 36, ...dates.map(() => 7), 12, 16, 12], fx: 2, fy: 1 },
-    { name: 'Перекличка', rows: roll, widths: [12, 6, 5, 36, 14, 14, 9], fx: 0, fy: 1 },
-    { name: 'Інструктажі', rows: safety, widths: [12, 50, 20, 5, 36, 12], fx: 0, fy: 1 }
-  ]), 'Журнал 9-Б ' + iso(new Date()) + '.xlsx');
+  const reports = [['Дата', 'День', 'Присутні', 'Усього', 'Відсутні', 'Пішли з уроку', 'Не відмічені', 'Збережено о']];
+  dates.filter(x => peek(x).saved).forEach(x => {
+    const r = peek(x).saved, short2 = list => list.map(n => nm(n).a).join(', ');
+    reports.push([short(x) + '.' + x.slice(0, 4), WD[parse(x).getDay()], r.present, r.total, short2(r.absent), short2(r.left), short2(r.unmarked), timeOf(r.at)]);
+  });
+  return { journal, roll, safety, reports, dates };
+}
+
+acts.xlsx = () => {
+  if (!S.classes.length) return toast('Спочатку додайте клас');
+  const cur = S.cur, sheets = [], merged = { reports: null, roll: null, safety: null };
+  S.classes.forEach(c => {
+    S.cur = c.id;
+    const t = classSheets();
+    sheets.push({ name: ('Журнал ' + c.name).replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31), rows: t.journal, widths: [5, 36, ...t.dates.map(() => 7), 12, 16, 12], fx: 2, fy: 1 });
+    for (const k in merged) {
+      if (!merged[k]) merged[k] = [['Клас', ...t[k][0]]];
+      t[k].slice(1).forEach(r => merged[k].push([c.name, ...r]));
+    }
+  });
+  S.cur = cur;
+  sheets.push(
+    { name: 'Звіти уроків', rows: merged.reports, widths: [8, 12, 6, 10, 8, 40, 30, 30, 12], fx: 0, fy: 1 },
+    { name: 'Перекличка', rows: merged.roll, widths: [8, 12, 6, 5, 36, 14, 14, 9], fx: 0, fy: 1 },
+    { name: 'Інструктажі', rows: merged.safety, widths: [8, 12, 50, 20, 5, 36, 12], fx: 0, fy: 1 }
+  );
+  download(buildXlsx(sheets), 'Журнал ФК ' + iso(new Date()) + '.xlsx');
   toast('Файл Excel готовий');
 };
 

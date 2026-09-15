@@ -156,17 +156,37 @@ details.card[open] summary h2::after{content:" ▴"}
 .sig path{stroke:var(--ink)}
 
 /* journal grid */
-.gridwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
-table.j{border-collapse:separate;border-spacing:0;font-size:13px;font-variant-numeric:tabular-nums}
-table.j th,table.j td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;height:36px;min-width:38px;text-align:center}
-table.j thead th{font:600 12px/1.1 var(--display);color:var(--muted);background:var(--raise);position:sticky;top:0;padding:4px 2px}
-table.j th.nm{position:sticky;left:0;z-index:2;background:var(--surface);text-align:left;padding:0 8px;min-width:132px;max-width:132px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-table.j thead th.nm{z-index:3;background:var(--raise)}
-table.j td.a{color:var(--bad);font-weight:700}
-table.j td.l{color:var(--warn);font-weight:700}
-table.j td.z{color:var(--late);font-weight:700}
-table.j td.r{color:var(--muted)}
-table.j td.g{font-weight:700}
+/* журнал-таблиця: учні × уроки, як в електронному журналі */
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chips .btn{flex:0 0 auto}
+.ejwrap{overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;max-height:calc(100dvh - 230px);overscroll-behavior:contain}
+/* на планшеті й комп'ютері таблиця ширша за колонку сторінки */
+@media (min-width:700px){.ejwrap{position:relative;left:50%;transform:translateX(-50%);width:min(1280px,calc(100vw - 48px))}}
+table.ej{border-collapse:separate;border-spacing:0;font-size:13px;font-variant-numeric:tabular-nums}
+table.ej th,table.ej td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;text-align:center;height:42px;min-width:42px}
+table.ej thead th{position:sticky;top:0;z-index:2;background:var(--surface);font:600 11px/1.1 var(--display);color:var(--ink);height:28px}
+table.ej thead tr + tr th{top:28px;height:22px;color:var(--muted);font-weight:500}
+table.ej .who{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;min-width:176px;max-width:176px;padding:3px 8px}
+table.ej thead .who{z-index:3}
+table.ej th.avgh{font-size:10px;line-height:1.05;min-width:58px;padding:0 4px}
+.who-in{display:grid;grid-template-columns:16px 26px 1fr;gap:6px;align-items:center}
+.who .num{font:600 10px/1 var(--display);color:var(--accent);text-align:right}
+.who .ava{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font:600 11px/1 var(--display)}
+.ava.c0{background:var(--accent-soft);color:var(--accent)}
+.ava.c1{background:var(--late-soft);color:var(--late)}
+.ava.c2{background:var(--warn-soft);color:var(--warn)}
+.who .full{font-size:12px;font-weight:600;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+table.ej .cellbtn{display:block;width:100%;height:100%;min-height:inherit;border:0;background:transparent;font:inherit;color:inherit;padding:0}
+table.ej thead .cellbtn{padding:0 2px}
+table.ej th.today{color:var(--accent)}
+table.ej .sel{background:var(--accent-soft)}
+table.ej td.avg{font-weight:700;background:var(--raise)}
+table.ej td.a{color:var(--bad);font-weight:700}
+table.ej td.l{color:var(--warn);font-weight:700}
+table.ej td.z{color:var(--late);font-weight:700}
+table.ej td.r{color:var(--muted)}
+table.ej td.g{font-weight:700;font-size:14px}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .legend b{font-weight:700}
 
@@ -277,7 +297,7 @@ table.j td.g{font-weight:700}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -706,7 +726,8 @@ function renderGrades() {
 }
 acts.grade = b => gradeSheet(b.dataset.id);
 
-function gradeSheet(id) {
+// single: без автопереходу до наступного учня (відкрито з таблиці журналу)
+function gradeSheet(id, single) {
   const s = K().students.find(x => x.id === id), cur = peek(ui.date).grades[id] || '';
   const levels = [['початковий', 1], ['середній', 4], ['достатній', 7], ['високий', 10]];
   const sh = openSheet(`<div><div class="label">${long(ui.date)} · оцінка</div><h3>${esc(s.name)}</h3></div>
@@ -726,7 +747,7 @@ function gradeSheet(id) {
     render();
     const list = active(), i = list.findIndex(x => x.id === id);
     const nx = list.slice(i + 1).find(x => status(ui.date, x.id) !== 'a' && !d.grades[x.id]);
-    if (g && nx) gradeSheet(nx.id); else closeSheet();
+    if (g && nx && !single) gradeSheet(nx.id); else closeSheet();
   };
 }
 </script>
@@ -1031,7 +1052,8 @@ function renderAbsences() {
         (r.z.length ? `<span class="chip late">з ${r.z.length}</span>` : '') + '</span>',
         r.a.length ? `пропустив ${r.a.length} з ${dates.length} уроків` : null)).join('') + '</ul>' + emptyNote +
       `<div class="legend"><span><b style="color:var(--bad)">н</b> — пропустив урок</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b style="color:var(--late)">з</b> — запізнився</span></div>
-      <button class="btn" data-act="absCopy">Копіювати список пропусків</button>`;
+      <div class="actions"><button class="btn" data-act="absCopy">Копіювати список пропусків</button>
+      <button class="btn" data-act="absTable">Показати таблицею</button></div>`;
   }
   h += remoteCard();
   $('#view-absences').innerHTML = h;
@@ -1084,22 +1106,34 @@ function avgOf(dates, id) {
 }
 
 function renderJournal() {
-  const st = active(), dates = lessonDates();
-  const months = [...new Set(dates.map(x => x.slice(0, 7)).concat(ui.date.slice(0, 7)))].sort();
-  if (!ui.jm || !months.includes(ui.jm)) ui.jm = ui.date.slice(0, 7);
-  const md = dates.filter(x => x.startsWith(ui.jm)), mName = MN[+ui.jm.slice(5) - 1];
-  let h = '<div class="actions">' + months.map(m => `<button class="btn small${m === ui.jm ? ' primary' : ''}" data-act="jm" data-v="${m}">${MN[+m.slice(5) - 1]}</button>`).join('') + '</div>';
-  if (!md.length) {
-    h += `<div class="card"><h2>${mName}: записів ще немає</h2><p>Уроки з’являться тут після переклички або оцінок.</p></div>`;
+  const st = active(), dates = lessonDates(), today = iso(new Date());
+  const [from, to] = schoolYearRange(ui.date), y0 = from.slice(0, 4), y1 = to.slice(0, 4);
+  const months = [8, 9, 10, 11, 0, 1, 2, 3, 4, 5].map(m => (m >= 8 ? y0 : y1) + '-' + pad2(m + 1));
+  if (!ui.jm || (ui.jm !== 'year' && !months.includes(ui.jm))) ui.jm = ui.date.slice(0, 7);
+  const jd = journalDates(ui.jm, y0, y1), pname = ui.jm === 'year' ? 'навчальний рік' : MN[+ui.jm.slice(5) - 1].toLowerCase();
+  let h = '<div class="chips">' + months.map(m => `<button class="btn small${m === ui.jm ? ' primary' : ''}" data-act="jm" data-v="${m}">${MN[+m.slice(5) - 1]}</button>`).join('') +
+    `<button class="btn small${ui.jm === 'year' ? ' primary' : ''}" data-act="jm" data-v="year">Весь рік</button></div>`;
+  if (!jd.length) {
+    h += `<div class="card"><h2>Уроків за ${pname} немає</h2><p>Перевірте дні уроків у налаштуваннях класу нижче.</p></div>`;
   } else {
-    h += `<div class="gridwrap"><table class="j"><thead><tr><th class="nm">Учень</th>` +
-      md.map(x => `<th><button data-act="jgo" data-date="${x}" style="border:0;background:none;font:inherit;color:inherit;padding:2px">${WD[parse(x).getDay()]}<br>${short(x)}</button></th>`).join('') +
-      `<th>н</th><th>Сер.</th></tr></thead><tbody>` +
-      st.map((s, i) => `<tr><th class="nm">${i + 1}. ${esc(nm(s.name).a)}</th>` +
-        md.map(x => { const v = cell(x, s.id); return `<td class="${cls(v)}">${esc(v)}</td>`; }).join('') +
-        `<td class="a">${md.filter(x => status(x, s.id) === 'a').length || ''}</td><td class="g">${String(avgOf(md, s.id)).replace('.', ',')}</td></tr>`).join('') +
+    h += `<div class="ejwrap"><table class="ej"><thead>
+      <tr><th class="who">Учні</th><th class="avgh" rowspan="2">Середня оцінка</th>` +
+      jd.map(x => `<th class="${x === today ? 'today' : ''}${x === ui.date ? ' sel' : ''}"><button class="cellbtn" data-act="jgo" data-date="${x}">${x.slice(8)}/${x.slice(5, 7)}</button></th>`).join('') +
+      `</tr><tr><th class="who">${esc(K().name)} клас</th>` +
+      jd.map(x => `<th${x === ui.date ? ' class="sel"' : ''}>${WD[parse(x).getDay()]}</th>`).join('') +
+      '</tr></thead><tbody>' +
+      st.map((s, i) => {
+        const p = s.name.trim().split(/\s+/), ini = ((p[0] || '')[0] || '') + ((p[1] || '')[0] || ''), avg = avgOf(jd, s.id);
+        return `<tr data-sid="${s.id}"><th class="who"><div class="who-in"><span class="num">${pad2(i + 1)}</span><span class="ava c${i % 3}">${esc(ini.toUpperCase())}</span><span class="full">${esc(s.name)}</span></div></th>
+          <td class="avg">${avg === '' ? '' : String(avg).replace('.', ',')}</td>` +
+          jd.map(x => {
+            const v = cell(x, s.id);
+            return `<td class="${cls(v)}${x === ui.date ? ' sel' : ''}"><button class="cellbtn" data-act="jcell" data-date="${x}" data-id="${s.id}" aria-label="${esc(nm(s.name).a)}, ${short(x)}">${esc(v)}</button></td>`;
+          }).join('') + '</tr>';
+      }).join('') +
       `</tbody></table></div>
-      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--late)">з</b> — запізнився</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b style="color:var(--muted)">д</b> — дистанційно</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
+      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--late)">з</b> — запізнився</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b style="color:var(--muted)">д</b> — дистанційно</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>
+      <p class="label" style="margin:0">Дата — відкрити урок · клітинка — поставити оцінку</p>`;
   }
   const savedDates = dates.filter(x => peek(x).saved).reverse();
   if (savedDates.length) {
@@ -1131,10 +1165,24 @@ function renderJournal() {
     <button class="btn" data-act="saveStudents">Зберегти список учнів</button>
     <button class="btn danger" data-act="delClass">Видалити клас ${esc(K().name)}</button></div>`;
   $('#view-journal').innerHTML = h;
+  // Прокрутити таблицю до вибраної дати (або сьогодні)
+  const wrap = $('#view-journal .ejwrap'), selTh = wrap && (wrap.querySelector('thead th.sel') || wrap.querySelector('thead th.today'));
+  if (selTh) wrap.scrollLeft = Math.max(0, selTh.offsetLeft - 176 - 58 - 42);
   showUsage();
 }
 
+// Стовпці таблиці: усі дні уроків за розкладом класу + дні, де вже є записи
+function journalDates(jm, y0, y1) {
+  let a, b;
+  if (jm === 'year') { a = y0 + '-09-01'; b = y1 + '-06-30'; }
+  else { a = jm + '-01'; const e = parse(a); e.setMonth(e.getMonth() + 1); e.setDate(0); b = iso(e); }
+  const set = new Set(lessonDates().filter(x => x >= a && x <= b)), wd = K().weekdays;
+  for (const d = parse(a); iso(d) <= b; d.setDate(d.getDate() + 1)) if (wd.includes(d.getDay())) set.add(iso(d));
+  return [...set].sort();
+}
 acts.jm = b => { ui.jm = b.dataset.v; render(); };
+acts.jcell = b => { ui.date = b.dataset.date; render(); gradeSheet(b.dataset.id, true); };
+acts.absTable = () => { const { per, ym } = absPeriod(); ui.jm = per === 'year' ? 'year' : ym; ui.tab = 'journal'; render(); scrollTo(0, 0); };
 acts.jgo = b => { ui.date = b.dataset.date; ui.tab = 'roll'; ui.mode = peek(ui.date).saved ? 'end' : 'start'; render(); scrollTo(0, 0); };
 acts.restore = b => b.closest('.view').querySelector('input[type=file]').click();
 acts.addClass = () => classSheet();

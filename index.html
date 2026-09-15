@@ -126,6 +126,14 @@ main{padding-block:14px}
 .mark.a{border:0;background:var(--bad);color:#fff}
 .mark.l{border:0;background:var(--warn);color:#fff}
 .mark.z{border:0;background:var(--late);color:var(--surface)}
+.mark.r{border:1.5px solid var(--muted);color:var(--muted);font-size:13px}
+details.card summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none;min-height:36px}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary h2::after{content:" ▾";color:var(--muted);font-size:.8em}
+details.card[open] summary h2::after{content:" ▴"}
+.remrow{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--line);padding-top:4px}
+.remfrom{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);padding-bottom:6px}
+.remfrom input{min-height:38px;border-radius:9px;border:1px solid var(--line);background:var(--raise);padding:4px 8px}
 .mark.g{border:0;background:var(--ink);color:var(--surface);font-size:18px}
 .subhead{padding:8px 12px;background:var(--raise);border-bottom:1px solid var(--line)}
 
@@ -157,16 +165,18 @@ table.j thead th.nm{z-index:3;background:var(--raise)}
 table.j td.a{color:var(--bad);font-weight:700}
 table.j td.l{color:var(--warn);font-weight:700}
 table.j td.z{color:var(--late);font-weight:700}
+table.j td.r{color:var(--muted)}
 table.j td.g{font-weight:700}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .legend b{font-weight:700}
 
 /* bottom tabs */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-.tabs .wrap{display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs .wrap{display:grid;grid-template-columns:repeat(5,1fr)}
 .tabs button{border:0;background:transparent;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:600;color:var(--muted)}
 .tabs svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tabs button[aria-selected="true"]{color:var(--accent)}
+.tabs button{font-size:11px;padding-inline:0}
 
 /* sheets */
 .scrim{position:fixed;inset:0;z-index:40;background:rgba(5,12,9,.5);display:flex;align-items:flex-end;justify-content:center}
@@ -245,6 +255,7 @@ table.j td.g{font-weight:700}
 <main class="wrap">
   <section class="view" id="view-roll"></section>
   <section class="view" id="view-grades" hidden></section>
+  <section class="view" id="view-absences" hidden></section>
   <section class="view" id="view-safety" hidden></section>
   <section class="view" id="view-journal" hidden></section>
 </main>
@@ -253,6 +264,7 @@ table.j td.g{font-weight:700}
   <div class="wrap">
     <button role="tab" data-tab="roll" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Перекличка</button>
     <button role="tab" data-tab="grades" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Оцінки</button>
+    <button role="tab" data-tab="absences" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M10 13l4 4M14 13l-4 4"/></svg>Пропуски</button>
     <button role="tab" data-tab="safety" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Інструктаж</button>
     <button role="tab" data-tab="journal" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg>Журнал</button>
   </div>
@@ -265,7 +277,7 @@ table.j td.g{font-weight:700}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -346,8 +358,16 @@ const day = s => K().days[s] || (K().days[s] = { start: {}, end: {}, grades: {} 
 const peek = s => K().days[s] || { start: {}, end: {}, grades: {} };
 // '' не відмічено, p присутній, a відсутній, l пішов з уроку (був на початку, нема в кінці),
 // z запізнився (не було на початку, є в кінці)
+// Дистанційне навчання: у учня список періодів [{from, to}], to = null — досі дистанційно
+const currentRemote = s => (s.remote || []).find(p => !p.to);
+function isRemote(sid, date) {
+  const s = K().students.find(x => x.id === sid);
+  return !!(s && s.remote && s.remote.some(p => p.from <= date && (!p.to || date <= p.to)));
+}
+// r дистанційно (не рахується відсутнім)
 function status(s, id) {
   const d = peek(s), v = d.start[id], atEnd = d.end[id] === true;
+  if (isRemote(id, s)) return v === true ? 'p' : 'r';
   if (v === true) return Object.keys(d.end).length && !atEnd ? 'l' : 'p';
   if (atEnd) return 'z';
   if (v === false) return 'a';
@@ -396,7 +416,7 @@ $('#dateInput').addEventListener('change', e => { if (e.target.value) { ui.date 
 document.querySelectorAll('.tabs [data-tab]').forEach(b => b.onclick = () => { ui.tab = b.dataset.tab; render(); scrollTo(0, 0); });
 
 function render() {
-  const views = { roll: renderRoll, grades: renderGrades, safety: renderSafety, journal: renderJournal };
+  const views = { roll: renderRoll, grades: renderGrades, absences: renderAbsences, safety: renderSafety, journal: renderJournal };
   renderHeader();
   for (const t in views) {
     $('#view-' + t).hidden = t !== ui.tab;
@@ -473,7 +493,8 @@ function backupNag() {
 }
 
 function renderRoll() {
-  const d = peek(ui.date), st = active();
+  const d = peek(ui.date), all = active();
+  const rem = all.filter(s => isRemote(s.id, ui.date)), st = all.filter(s => !rem.includes(s));
   let h = backupNag() + `<div class="seg">
     <button data-act="mode" data-v="start" aria-pressed="${ui.mode === 'start'}">Початок уроку</button>
     <button data-act="mode" data-v="end" aria-pressed="${ui.mode === 'end'}">Кінець уроку</button></div>`;
@@ -482,15 +503,15 @@ function renderRoll() {
     const p = st.filter(s => d.start[s.id] === true).length, a = st.filter(s => d.start[s.id] === false).length, u = st.length - p - a;
     h += `<div class="board"><div><div class="label">Присутні</div><div class="score">${p}<em> / ${st.length}</em></div></div>
       <div class="meta"><div class="tally"><span class="chip ${a ? 'bad' : ''}">відсутні ${a}</span>
-      <span class="chip ${u ? 'warn' : 'ok'}">${u ? 'не відмічено ' + u : 'всі відмічені'}</span></div></div></div>
+      <span class="chip ${u ? 'warn' : 'ok'}">${u ? 'не відмічено ' + u : 'всі відмічені'}</span>${rem.length ? `<span class="chip">дист. ${rem.length}</span>` : ''}</div></div></div>
       <div class="actions"><button class="btn primary" data-act="allStart">${p + a ? 'Решта присутні' : 'Всі присутні'}</button>
       <button class="btn danger small" data-act="resetStart">Скинути</button></div>
       ${searchBox('roll')}
       <div class="label">Торкніться учня: присутній ⇄ відсутній</div>
       <ul class="list">` + st.map((s, i) => {
         const v = d.start[s.id];
-        return studentRow(s, i, 'tStart', v === true ? mk('p', '✓') : v === false ? mk('a', 'н') : mk('', '—'));
-      }).join('') + '</ul>' + emptyNote;
+        return studentRow(s, all.indexOf(s), 'tStart', v === true ? mk('p', '✓') : v === false ? mk('a', 'н') : mk('', '—'));
+      }).join('') + remoteRows(rem, all) + '</ul>' + emptyNote;
     const absentStart = st.filter(s => d.start[s.id] === false && d.end[s.id] !== true).map(s => s.name);
     if (absentStart.length) h += listAlert('', 'Відсутні', absentStart, 'absent', ui.date);
     if (p && !u) h += '<button class="btn primary" data-act="mode" data-v="end">Далі: кінець уроку</button>';
@@ -505,7 +526,7 @@ function renderRoll() {
       const miss = present.filter(s => d.end[s.id] !== true);
       const absent = st.filter(s => d.start[s.id] !== true), late = absent.filter(s => d.end[s.id] === true);
       h += `<div class="board"><div><div class="label">На місці</div><div class="score">${present.length - miss.length}<em> / ${present.length}</em></div></div>
-        <div class="meta"><div class="tally">${begun ? (miss.length ? `<span class="chip bad">немає ${miss.length}</span>` : '<span class="chip ok">всі на місці</span>') : '<span class="chip warn">ще не перевірено</span>'}${late.length ? `<span class="chip late">запізнились ${late.length}</span>` : ''}</div>
+        <div class="meta"><div class="tally">${begun ? (miss.length ? `<span class="chip bad">немає ${miss.length}</span>` : '<span class="chip ok">всі на місці</span>') : '<span class="chip warn">ще не перевірено</span>'}${late.length ? `<span class="chip late">запізнились ${late.length}</span>` : ''}${rem.length ? `<span class="chip">дист. ${rem.length}</span>` : ''}</div>
         <span>з тих, хто був на початку</span></div></div>
         <div class="actions"><button class="btn primary" data-act="allEnd">Всі на місці</button>
         <button class="btn danger small" data-act="resetEnd">Скинути</button></div>
@@ -513,17 +534,17 @@ function renderRoll() {
         <div class="label">Торкніться учня, який є в кінці уроку</div>
         <ul class="list">` + present.map(s => {
           const v = d.end[s.id] === true;
-          return studentRow(s, st.indexOf(s), 'tEnd', v ? mk('p', '✓') : begun ? mk('l', 'нема') : mk('', '—'));
+          return studentRow(s, all.indexOf(s), 'tEnd', v ? mk('p', '✓') : begun ? mk('l', 'нема') : mk('', '—'));
         }).join('');
       if (absent.length) {
         h += `<li class="subhead label">Не було на початку · торкніться, якщо учень прийшов пізніше</li>` +
           absent.map(s => {
             const came = d.end[s.id] === true;
-            return studentRow(s, st.indexOf(s), 'tEnd', came ? mk('z', 'запізн.') : d.start[s.id] === false ? mk('a', 'н') : mk('', '—'),
+            return studentRow(s, all.indexOf(s), 'tEnd', came ? mk('z', 'запізн.') : d.start[s.id] === false ? mk('a', 'н') : mk('', '—'),
               came ? 'запізнився на урок' : null, !came);
           }).join('');
       }
-      h += '</ul>' + emptyNote;
+      h += remoteRows(rem, all) + '</ul>' + emptyNote;
       // Підсумок і збереження під списком, щоб список не стрибав під час відмічання
       if (begun) {
         h += miss.length
@@ -558,7 +579,9 @@ acts.tStart = b => {
   if (clearSearch('roll')) toast(nameOf(id) + (d.start[id] ? ': присутній' : ': відсутній'));
   else render();
 };
-acts.allStart = () => { const d = day(ui.date); active().forEach(s => { if (d.start[s.id] === undefined) d.start[s.id] = true; }); save(); render(); };
+acts.allStart = () => { const d = day(ui.date); active().forEach(s => { if (d.start[s.id] === undefined && !isRemote(s.id, ui.date)) d.start[s.id] = true; }); save(); render(); };
+const remoteRows = (rem, all) => rem.length ? '<li class="subhead label">Дистанційне навчання</li>' +
+  rem.map(s => studentRow(s, all.indexOf(s), '', mk('r', 'дист.'), 'дистанційне навчання')).join('') : '';
 acts.resetStart = () => { if (confirm('Скинути перекличку на початку і в кінці уроку?')) { const d = day(ui.date); d.start = {}; d.end = {}; save(); render(); } };
 acts.tEnd = b => {
   const d = day(ui.date), id = b.dataset.id;
@@ -572,7 +595,7 @@ acts.resetEnd = () => { if (confirm('Скинути перекличку в кі
 
 /* ---------- збереження уроку (звіт) ---------- */
 function lessonSnapshot(date) {
-  const d = peek(date), st = active(), endChecked = Object.keys(d.end).length > 0;
+  const d = peek(date), all = active(), st = all.filter(s => !isRemote(s.id, date)), endChecked = Object.keys(d.end).length > 0;
   const names = f => st.filter(f).map(s => s.name);
   const snap = {
     total: st.length,
@@ -585,6 +608,8 @@ function lessonSnapshot(date) {
   // Поле «late» лише коли хтось запізнився: старі збереження не вважаються зміненими
   const late = names(s => d.start[s.id] !== true && d.end[s.id] === true);
   if (late.length) snap.late = late;
+  const remote = all.filter(s => isRemote(s.id, date)).map(s => s.name);
+  if (remote.length) snap.remote = remote;
   return snap;
 }
 const sameSnap = (a, b) => JSON.stringify(Object.assign({}, a, { at: 0 })) === JSON.stringify(Object.assign({}, b, { at: 0 }));
@@ -599,14 +624,14 @@ const listAlert = (cls, title, names, kind, date) => `<div class="alert ${cls}" 
 function reportHtml(r, date) {
   const row = (k, list, c, kind) => list.length ? `<dt>${k}: ${list.length}${kind ? `<button class="linkbtn" data-act="copy" data-kind="${kind}" data-src="saved" data-date="${date}">копіювати</button>` : ''}</dt><dd class="${c}">${list.map(n => esc(nm(n).a)).join(', ')}</dd>` : '';
   return `<dl class="kv"><dt>Присутні</dt><dd>${r.present} з ${r.total}</dd>` +
-    row('Відсутні', r.absent, 'bad', 'absent') + row('Запізнилися', r.late || [], 'late', 'late') + row('Пішли з уроку', r.left, 'warn', 'left') + row('Не відмічені', r.unmarked, '') +
+    row('Відсутні', r.absent, 'bad', 'absent') + row('Запізнилися', r.late || [], 'late', 'late') + row('Пішли з уроку', r.left, 'warn', 'left') + row('Не відмічені', r.unmarked, '') + row('Дистанційно', r.remote || [], '') +
     (allHere(r) ? '<dt>Підсумок</dt><dd class="ok">Усі учні були на всьому уроці</dd>' : '') +
     (r.endChecked ? '' : '<dt>Увага</dt><dd class="warn">Кінець уроку не перевірявся</dd>') + '</dl>';
 }
 function reportText(date, r) {
   const L = [`${K().name} · Фізична культура · ${long(date)} ${date.slice(0, 4)}`, `Присутні: ${r.present} з ${r.total}`];
   const add = (k, list) => { if (list.length) L.push(`\n${k} (${list.length}):\n` + list.map((n, i) => `${i + 1}. ${n}`).join('\n')); };
-  add('Відсутні', r.absent); add('Запізнилися', r.late || []); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked);
+  add('Відсутні', r.absent); add('Запізнилися', r.late || []); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked); add('Дистанційне навчання', r.remote || []);
   if (allHere(r)) L.push('Усі учні були на всьому уроці.');
   if (!r.endChecked) L.push('Кінець уроку не перевірявся.');
   return L.join('\n');
@@ -668,7 +693,7 @@ function renderGrades() {
   const d = peek(ui.date), st = active();
   const vals = st.map(s => +d.grades[s.id]).filter(n => n >= 1 && n <= 12);
   const avg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1).replace('.', ',') : '—';
-  const subs = { a: 'відсутній на уроці', l: 'пішов з уроку', z: 'запізнився на урок' };
+  const subs = { a: 'відсутній на уроці', l: 'пішов з уроку', z: 'запізнився на урок', r: 'дистанційне навчання' };
   $('#view-grades').innerHTML = `<div class="board"><div><div class="label">Оцінено</div><div class="score">${vals.length}<em> / ${st.length}</em></div></div>
     <div class="meta"><span class="chip">середній бал ${avg}</span><span>12-бальна шкала</span></div></div>
     ${searchBox('grades')}
@@ -959,11 +984,100 @@ function buildPrint() {
       '</tbody></table></section>').join('');
 }
 
+/* ---------- пропуски та дистанційне навчання ---------- */
+function schoolYearRange(date) {
+  const d = parse(date), y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+  return [y + '-08-01', (y + 1) + '-07-31'];
+}
+function absPeriod() {
+  const per = ui.absP || 'month', ym = ui.date.slice(0, 7), [from, to] = schoolYearRange(ui.date);
+  const dates = lessonDates().filter(x => per === 'month' ? x.startsWith(ym) : x >= from && x <= to);
+  const name = per === 'month' ? MN[+ym.slice(5) - 1].toLowerCase() + ' ' + ym.slice(0, 4) : schoolYear(ui.date) + ' н. р.';
+  return { per, ym, dates, name };
+}
+// Для кожного учня дати: a пропуски, l пішов з уроку, z запізнення (дистанційні дні не рахуються)
+function absenceData(dates) {
+  return active().map((s, i) => {
+    const r = { s, n: i + 1, a: [], l: [], z: [] };
+    dates.forEach(x => { const k = status(x, s.id); if (k === 'a' || k === 'l' || k === 'z') r[k].push(x); });
+    return r;
+  });
+}
+const absRows = dates => absenceData(dates).filter(r => r.a.length || r.l.length || r.z.length)
+  .sort((x, y) => y.a.length - x.a.length || y.l.length - x.l.length || y.z.length - x.z.length || x.n - y.n);
+const dayList = list => list.map(x => `${WD[parse(x).getDay()]} ${short(x)}`).join(', ');
+const absLine = r => `${r.s.name} — ` + [
+  r.a.length && `пропусків: ${r.a.length} (${r.a.map(short).join(', ')})`,
+  r.l.length && `пішов з уроку: ${r.l.length} (${r.l.map(short).join(', ')})`,
+  r.z.length && `запізнень: ${r.z.length} (${r.z.map(short).join(', ')})`
+].filter(Boolean).join('; ');
+
+function renderAbsences() {
+  const { per, ym, dates, name } = absPeriod(), rows = absRows(dates);
+  const total = rows.reduce((t, r) => t + r.a.length, 0);
+  let h = `<div class="seg"><button data-act="absP" data-v="month" aria-pressed="${per === 'month'}">${MN[+ym.slice(5) - 1]}</button>
+      <button data-act="absP" data-v="year" aria-pressed="${per === 'year'}">Весь рік</button></div>
+    <div class="board"><div><div class="label">Пропусків</div><div class="score">${total}</div></div>
+      <div class="meta"><span class="chip">уроків: ${dates.length}</span><span>${name}</span></div></div>`;
+  if (!dates.length) {
+    h += '<div class="card"><h2>За цей період уроків ще немає</h2><p>Пропуски з’являться після переклички. Місяць обирається датою вгорі.</p></div>';
+  } else if (!rows.length) {
+    h += '<div class="alert good" role="status"><h3>Ніхто не пропускав уроків</h3></div>';
+  } else {
+    h += searchBox('absences') + '<div class="label">Торкніться учня, щоб побачити дати</div><ul class="list">' +
+      rows.map(r => studentRow(r.s, r.n - 1, 'absDetail', '<span class="tally">' +
+        (r.a.length ? `<span class="chip bad">н ${r.a.length}</span>` : '') +
+        (r.l.length ? `<span class="chip warn">п ${r.l.length}</span>` : '') +
+        (r.z.length ? `<span class="chip late">з ${r.z.length}</span>` : '') + '</span>',
+        r.a.length ? `пропустив ${r.a.length} з ${dates.length} уроків` : null)).join('') + '</ul>' + emptyNote +
+      `<div class="legend"><span><b style="color:var(--bad)">н</b> — пропустив урок</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b style="color:var(--late)">з</b> — запізнився</span></div>
+      <button class="btn" data-act="absCopy">Копіювати список пропусків</button>`;
+  }
+  h += remoteCard();
+  $('#view-absences').innerHTML = h;
+  applyFilter('absences');
+}
+
+function remoteCard() {
+  const st = active(), on = st.filter(s => currentRemote(s)).length;
+  return `<details class="card" id="remCard"${ui.remOpen ? ' open' : ''}>
+    <summary><h2>Дистанційне навчання</h2><span class="chip">${on ? on + ' ' + plural(on) : 'немає'}</span></summary>
+    <p>Учні на дистанційному навчанні не рахуються відсутніми і не потрапляють у пропуски. У перекличці вони стоять окремо внизу списку.</p>` +
+    st.map(s => {
+      const p = currentRemote(s);
+      return `<div class="remrow"><label class="switch" for="rem-${s.id}"><span>${esc(nm(s.name).a)}</span>
+        <input type="checkbox" id="rem-${s.id}" data-rem="${s.id}"${p ? ' checked' : ''}></label>` +
+        (p ? `<label class="remfrom">дистанційно з дати<input type="date" data-remfrom="${s.id}" value="${p.from}"></label>` : '') + '</div>';
+    }).join('') + '</details>';
+}
+
+acts.absP = b => { ui.absP = b.dataset.v; render(); };
+acts.absDetail = b => {
+  const { dates, name } = absPeriod(), r = absenceData(dates).find(x => x.s.id === b.dataset.id);
+  const row = (t, list, c) => list.length ? `<dt>${t}: ${list.length}</dt><dd class="${c}">${dayList(list)}</dd>` : '';
+  const sh = openSheet(`<div><div class="label">${esc(K().name)} · ${name}</div><h3>${esc(r.s.name)}</h3></div>
+    <dl class="kv">${row('Пропуски', r.a, 'bad')}${row('Пішов з уроку', r.l, 'warn')}${row('Запізнення', r.z, 'late')}</dl>
+    <div class="actions"><button class="btn" data-x="copy">Копіювати</button><button class="btn" data-x="close">Закрити</button></div>`);
+  sh.onclick = e => {
+    const x = e.target.closest('[data-x]');
+    if (!x) return;
+    if (x.dataset.x === 'copy') copyText(`${K().name} · Фізична культура · ${name}\n` + absLine(r), 'Скопійовано');
+    closeSheet();
+  };
+};
+acts.absCopy = () => {
+  const { dates, name } = absPeriod(), rows = absRows(dates);
+  copyText(`${K().name} · Фізична культура · Пропуски за ${name} (уроків: ${dates.length})\n` +
+    rows.map((r, i) => `${i + 1}. ` + absLine(r)).join('\n'), 'Список пропусків скопійовано');
+};
+// Пам'ятаємо, чи розгорнута картка дистанційного навчання
+$('main').addEventListener('toggle', e => { if (e.target.id === 'remCard') ui.remOpen = e.target.open; }, true);
+
 /* ---------- журнал ---------- */
 const MN = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const lessonDates = () => Object.keys(K().days).filter(k => Object.keys(K().days[k].start).length || Object.keys(K().days[k].grades).length).sort();
-function cell(date, id) { const g = peek(date).grades[id], s = status(date, id); return g || ({ a: 'н', l: 'п', z: 'з' })[s] || ''; }
-const cls = v => ({ 'н': 'a', 'п': 'l', 'з': 'z' })[v] || (v ? 'g' : '');
+function cell(date, id) { const g = peek(date).grades[id], s = status(date, id); return g || ({ a: 'н', l: 'п', z: 'з', r: 'д' })[s] || ''; }
+const cls = v => ({ 'н': 'a', 'п': 'l', 'з': 'z', 'д': 'r' })[v] || (v ? 'g' : '');
 function avgOf(dates, id) {
   const v = dates.map(d => +peek(d).grades[id]).filter(n => n >= 1 && n <= 12);
   return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : '';
@@ -985,7 +1099,7 @@ function renderJournal() {
         md.map(x => { const v = cell(x, s.id); return `<td class="${cls(v)}">${esc(v)}</td>`; }).join('') +
         `<td class="a">${md.filter(x => status(x, s.id) === 'a').length || ''}</td><td class="g">${String(avgOf(md, s.id)).replace('.', ',')}</td></tr>`).join('') +
       `</tbody></table></div>
-      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--late)">з</b> — запізнився</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
+      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--late)">з</b> — запізнився</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b style="color:var(--muted)">д</b> — дистанційно</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
   }
   const savedDates = dates.filter(x => peek(x).saved).reverse();
   if (savedDates.length) {
@@ -1043,7 +1157,7 @@ acts.saveStudents = b => {
   lines.forEach(n => {
     let s = K().students.find(x => x.name === n && !used.has(x.id));
     if (!s) s = { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: n };
-    used.add(s.id); next.push({ id: s.id, name: n });
+    used.add(s.id); next.push(s.remote ? { id: s.id, name: n, remote: s.remote } : { id: s.id, name: n });
   });
   K().students.forEach(s => { if (!used.has(s.id)) next.push({ id: s.id, name: s.name, archived: true }); });
   K().students = next; save(); render(); toast('Список учнів збережено');
@@ -1052,6 +1166,24 @@ acts.saveStudents = b => {
 $('main').addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'className' && t.value.trim()) { K().name = t.value.trim(); save(); render(); }
+  if (t.dataset.rem) {
+    const s = K().students.find(x => x.id === t.dataset.rem), today = iso(new Date());
+    s.remote = s.remote || [];
+    const open = currentRemote(s);
+    if (t.checked && !open) s.remote.push({ from: today, to: null });
+    if (!t.checked && open) {
+      // Сьогодні вже в класі: дистанційний період закінчився вчора
+      const y = parse(today); y.setDate(y.getDate() - 1);
+      open.to = iso(y);
+      if (open.to < open.from) s.remote = s.remote.filter(p => p !== open);
+    }
+    save(); render();
+    toast(nm(s.name).a + (t.checked ? ': дистанційне навчання' : ': навчається в класі'));
+  }
+  if (t.dataset.remfrom && t.value) {
+    const s = K().students.find(x => x.id === t.dataset.remfrom), open = s && currentRemote(s);
+    if (open) { open.from = t.value; save(); render(); toast('Дистанційно з ' + long(t.value)); }
+  }
   if (t.id === 'tsAll') { S.settings.tsignAll = t.checked; save(); render(); }
   if (t.id === 'sfRecDate' && t.value) {
     const rec = weekRec(ui.date), other = weekRec(t.value);
@@ -1184,12 +1316,14 @@ function classSheets() {
     const r = peek(x).saved, short2 = list => list.map(n => nm(n).a).join(', ');
     reports.push([short(x) + '.' + x.slice(0, 4), WD[parse(x).getDay()], r.present, r.total, short2(r.absent), short2(r.late || []), short2(r.left), short2(r.unmarked), timeOf(r.at)]);
   });
-  return { journal, roll, safety, reports, dates };
+  const absences = [['№', 'Учень', 'Пропуски (н)', 'Дати пропусків', 'Пішов з уроку (п)', 'Запізнення (з)', 'Дистанційно зараз']];
+  absenceData(dates).forEach(r => absences.push([r.n, r.s.name, r.a.length, r.a.map(short).join(', '), r.l.length, r.z.length, currentRemote(r.s) ? 'так' : '']));
+  return { journal, roll, safety, reports, absences, dates };
 }
 
 acts.xlsx = () => {
   if (!S.classes.length) return toast('Спочатку додайте клас');
-  const cur = S.cur, sheets = [], merged = { reports: null, roll: null, safety: null };
+  const cur = S.cur, sheets = [], merged = { absences: null, reports: null, roll: null, safety: null };
   S.classes.forEach(c => {
     S.cur = c.id;
     const t = classSheets();
@@ -1201,6 +1335,7 @@ acts.xlsx = () => {
   });
   S.cur = cur;
   sheets.push(
+    { name: 'Пропуски', rows: merged.absences, widths: [8, 5, 36, 12, 40, 16, 14, 16], fx: 0, fy: 1 },
     { name: 'Звіти уроків', rows: merged.reports, widths: [8, 12, 6, 10, 8, 40, 30, 30, 30, 12], fx: 0, fy: 1 },
     { name: 'Перекличка', rows: merged.roll, widths: [8, 12, 6, 5, 36, 14, 14, 9], fx: 0, fy: 1 },
     { name: 'Інструктажі', rows: merged.safety, widths: [8, 12, 50, 20, 5, 36, 12, 14], fx: 0, fy: 1 }

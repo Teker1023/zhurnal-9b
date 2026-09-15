@@ -1,6 +1,6 @@
 // Кешує журнал на телефоні, щоб він відкривався без інтернету.
 // Після зміни файлів журналу збільште номер версії.
-const CACHE = 'zhurnal-fk-v3';
+const CACHE = 'zhurnal-fk-v4';
 const FILES = ['./', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

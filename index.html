@@ -625,10 +625,15 @@ function renderSafety() {
       <div class="meta"><span class="chip ${left ? 'warn' : 'ok'}">${left ? 'без підпису ' + left : 'всі підписали'}</span><span>тиждень ${range}</span></div></div>
       <div class="card"><div class="label">${long(rec.date)}${rec.by ? ' · провів ' + esc(rec.by) : ''}</div><h2>${esc(rec.topic)}</h2>
         <div class="actions"><button class="btn small danger" data-act="safetyDel">Видалити запис</button></div></div>
+      <div class="field"><label class="label" for="sfSearch">Пошук учня</label>
+        <input id="sfSearch" type="search" placeholder="Прізвище або ім’я" autocomplete="off" autocorrect="off" spellcheck="false" value="${esc(ui.sq || '')}"></div>
+      <div class="seg"><button data-act="sfFilter" data-v="all" aria-pressed="${ui.sf !== 'unsigned'}">Усі учні</button>
+        <button data-act="sfFilter" data-v="unsigned" aria-pressed="${ui.sf === 'unsigned'}">Без підпису: ${left}</button></div>
       <div class="label">Торкніться учня — відкриється поле для підпису</div>
       <ul class="list">` + st.map((s, i) => studentRow(s, i, 'sign',
         rec.signs[s.id] ? `<span class="sig">${svgSig(rec.signs[s.id])}</span>` : mk('', 'підпис'),
-        status(rec.date, s.id) === 'a' ? 'відсутній на уроці' : null)).join('') + '</ul>';
+        status(rec.date, s.id) === 'a' ? 'відсутній на уроці' : null)).join('') + '</ul>' +
+      '<p id="sfEmpty" class="label" style="margin:0;text-align:center" hidden>Нікого не знайдено</p>';
   }
   const all = [...K().safety].sort((a, b) => b.date.localeCompare(a.date));
   if (all.length) {
@@ -637,7 +642,28 @@ function renderSafety() {
       `</div><button class="btn" data-act="print">Друк або PDF журналу інструктажів</button></div>`;
   }
   $('#view-safety').innerHTML = h;
+  if (rec) filterSafety();
 }
+
+// Пошук за початком будь-яких слів ПІБ, у будь-якому порядку: «ім пріз» знайде «Прізвище Ім’я»
+const norm = s => String(s).toLowerCase().replace(/[’'ʼ`]/g, '').trim();
+function filterSafety() {
+  const rec = weekRec(ui.date), words = norm(ui.sq || '').split(/\s+/).filter(Boolean);
+  let shown = 0;
+  document.querySelectorAll('#view-safety .list li').forEach(li => {
+    const b = li.querySelector('[data-id]'), s = b && K().students.find(x => x.id === b.dataset.id);
+    const parts = s ? norm(s.name).split(/\s+/) : [];
+    const ok = !!s && words.every(w => parts.some(p => p.startsWith(w))) && (ui.sf !== 'unsigned' || !rec.signs[s.id]);
+    li.hidden = !ok;
+    if (ok) shown++;
+  });
+  const empty = $('#sfEmpty');
+  if (empty) empty.hidden = shown > 0;
+}
+$('main').addEventListener('input', e => {
+  if (e.target.id === 'sfSearch') { ui.sq = e.target.value; filterSafety(); }
+});
+acts.sfFilter = b => { ui.sf = b.dataset.v; render(); };
 
 acts.safetyNew = () => {
   const sel = $('#sfTopic').value, topic = sel === '__other' ? $('#sfOther').value.trim() : sel;
@@ -698,10 +724,12 @@ function signSheet(id) {
         for (let i = 1; i < p.length; i++) d.push((p[i][0] - p[i - 1][0]) + ' ' + (p[i][1] - p[i - 1][1]));
         return 'M' + p[0][0] + ' ' + p[0][1] + 'l' + (d.length ? d.join(' ') : '0 0');
       }).join('');
-      save(); render();
-      const list = active(), i = list.findIndex(x => x.id === id);
-      const nx = list.slice(i + 1).find(x => !rec.signs[x.id] && status(rec.date, x.id) !== 'a');
-      if (nx) { signSheet(nx.id); toast('Збережено. Далі: ' + nm(nx.name).a); } else { closeSheet(); toast('Підписи збережено'); }
+      // Повертаємось до списку з порожнім пошуком: наступний учень шукає себе сам
+      ui.sq = '';
+      save(); closeSheet(); render();
+      const f = $('#sfSearch');
+      if (f) f.scrollIntoView({ block: 'center' });
+      toast('Підпис збережено: ' + nm(s.name).a);
     }
   };
 }

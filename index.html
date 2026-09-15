@@ -61,6 +61,8 @@ button{cursor:pointer}
 .kv dd.bad{color:var(--bad)}
 .kv dd.warn{color:var(--warn)}
 .kv dd.late{color:var(--late)}
+.linkbtn{border:0;background:none;color:var(--accent);font:600 13px/1 var(--body);text-transform:none;letter-spacing:0;padding:8px 6px;margin:-8px 0 -8px 4px}
+.alert .actions{margin-top:4px}
 .kv dd.ok{color:var(--accent)}
 .datebar{display:grid;grid-template-columns:44px 1fr 44px;gap:8px;align-items:center}
 .iconbtn{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--raise);font-size:22px;line-height:1}
@@ -259,7 +261,7 @@ table.j td.g{font-weight:700}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -485,6 +487,8 @@ function renderRoll() {
         const v = d.start[s.id];
         return studentRow(s, i, 'tStart', v === true ? mk('p', '✓') : v === false ? mk('a', 'н') : mk('', '—'));
       }).join('') + '</ul>' + emptyNote;
+    const absentStart = st.filter(s => d.start[s.id] === false && d.end[s.id] !== true).map(s => s.name);
+    if (absentStart.length) h += listAlert('', 'Відсутні', absentStart, 'absent', ui.date);
     if (p && !u) h += '<button class="btn primary" data-act="mode" data-v="end">Далі: кінець уроку</button>';
   } else {
     const present = st.filter(s => d.start[s.id] === true);
@@ -519,12 +523,12 @@ function renderRoll() {
       // Підсумок і збереження під списком, щоб список не стрибав під час відмічання
       if (begun) {
         h += miss.length
-          ? `<div class="alert" role="status"><h3>Немає на перекличці: ${miss.length}</h3><ol>${miss.map(s => `<li>${esc(nm(s.name).a)}</li>`).join('')}</ol></div>`
+          ? listAlert('', 'Немає на перекличці', miss.map(s => s.name), 'left', ui.date)
           : `<div class="alert good" role="status"><h3>Усі, хто був на початку, на місці</h3></div>`;
       }
-      if (late.length) {
-        h += `<div class="alert late"><h3>Запізнилися: ${late.length}</h3><ol>${late.map(s => `<li>${esc(nm(s.name).a)}</li>`).join('')}</ol></div>`;
-      }
+      if (late.length) h += listAlert('late', 'Запізнилися', late.map(s => s.name), 'late', ui.date);
+      const absentNames = absent.filter(s => d.start[s.id] === false && d.end[s.id] !== true).map(s => s.name);
+      if (absentNames.length) h += listAlert('', 'Відсутні на уроці', absentNames, 'absent', ui.date);
       h += saveBlock(ui.date);
     }
   }
@@ -583,16 +587,21 @@ const sameSnap = (a, b) => JSON.stringify(Object.assign({}, a, { at: 0 })) === J
 const timeOf = ts => new Date(ts).toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
 const allHere = r => r.endChecked && !r.absent.length && !r.left.length && !r.unmarked.length && !(r.late || []).length;
 
-function reportHtml(r) {
-  const row = (k, list, c) => list.length ? `<dt>${k}: ${list.length}</dt><dd class="${c}">${list.map(n => esc(nm(n).a)).join(', ')}</dd>` : '';
+// Блок-список учнів із кнопкою копіювання (показ — прізвище та ім'я, копія — повне ПІБ)
+const listAlert = (cls, title, names, kind, date) => `<div class="alert ${cls}" role="status"><h3>${title}: ${names.length}</h3>
+  <ol>${names.map(n => `<li>${esc(nm(n).a)}</li>`).join('')}</ol>
+  <div class="actions"><button class="btn small" data-act="copy" data-kind="${kind}" data-date="${date}">Копіювати список</button></div></div>`;
+
+function reportHtml(r, date) {
+  const row = (k, list, c, kind) => list.length ? `<dt>${k}: ${list.length}${kind ? `<button class="linkbtn" data-act="copy" data-kind="${kind}" data-src="saved" data-date="${date}">копіювати</button>` : ''}</dt><dd class="${c}">${list.map(n => esc(nm(n).a)).join(', ')}</dd>` : '';
   return `<dl class="kv"><dt>Присутні</dt><dd>${r.present} з ${r.total}</dd>` +
-    row('Відсутні', r.absent, 'bad') + row('Запізнилися', r.late || [], 'late') + row('Пішли з уроку', r.left, 'warn') + row('Не відмічені', r.unmarked, '') +
+    row('Відсутні', r.absent, 'bad', 'absent') + row('Запізнилися', r.late || [], 'late', 'late') + row('Пішли з уроку', r.left, 'warn', 'left') + row('Не відмічені', r.unmarked, '') +
     (allHere(r) ? '<dt>Підсумок</dt><dd class="ok">Усі учні були на всьому уроці</dd>' : '') +
     (r.endChecked ? '' : '<dt>Увага</dt><dd class="warn">Кінець уроку не перевірявся</dd>') + '</dl>';
 }
 function reportText(date, r) {
   const L = [`${K().name} · Фізична культура · ${long(date)} ${date.slice(0, 4)}`, `Присутні: ${r.present} з ${r.total}`];
-  const add = (k, list) => { if (list.length) L.push(`${k} (${list.length}): ${list.map(n => nm(n).a).join(', ')}`); };
+  const add = (k, list) => { if (list.length) L.push(`\n${k} (${list.length}):\n` + list.map((n, i) => `${i + 1}. ${n}`).join('\n')); };
   add('Відсутні', r.absent); add('Запізнилися', r.late || []); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked);
   if (allHere(r)) L.push('Усі учні були на всьому уроці.');
   if (!r.endChecked) L.push('Кінець уроку не перевірявся.');
@@ -601,8 +610,9 @@ function reportText(date, r) {
 function saveBlock(date) {
   const sv = peek(date).saved;
   if (sv && sameSnap(sv, lessonSnapshot(date))) {
-    return `<div class="card"><div class="label">Урок збережено о ${timeOf(sv.at)}</div>${reportHtml(sv)}
-      <button class="btn" data-act="shareReport" data-date="${date}">Поділитися звітом</button></div>`;
+    return `<div class="card"><div class="label">Урок збережено о ${timeOf(sv.at)}</div>${reportHtml(sv, date)}
+      <div class="actions"><button class="btn" data-act="copy" data-kind="all" data-src="saved" data-date="${date}">Копіювати звіт</button>
+      <button class="btn" data-act="shareReport" data-date="${date}">Поділитися</button></div></div>`;
   }
   return `<div class="card"><div class="label">${sv ? 'Після збереження були зміни' : 'Урок ще не збережено'}</div>
     <p>Зберігає звіт уроку: скільки було учнів, кого не було, хто запізнився і хто пішов до кінця уроку.</p>
@@ -615,10 +625,38 @@ acts.saveLesson = () => {
   day(ui.date).saved = Object.assign(snap, { at: Date.now() });
   save(); render(); toast('Урок збережено');
 };
+/* ---------- копіювання списків для адміністрації ---------- */
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+  return ok;
+}
+function copyText(text, msg) {
+  const done = () => toast(msg || 'Скопійовано'), fail = () => toast('Не вдалося скопіювати');
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => (fallbackCopy(text) ? done() : fail()));
+  else if (fallbackCopy(text)) done();
+  else fail();
+}
+acts.copy = b => {
+  const date = b.dataset.date || ui.date, kind = b.dataset.kind;
+  const r = b.dataset.src === 'saved' ? peek(date).saved : lessonSnapshot(date);
+  if (kind === 'all') return copyText(reportText(date, r), 'Звіт скопійовано');
+  const titles = { absent: 'Відсутні', late: 'Запізнилися', left: 'Немає в кінці уроку' }, list = r[kind] || [];
+  if (!list.length) return toast('Список порожній');
+  const text = `${K().name} · Фізична культура · ${long(date)} ${date.slice(0, 4)}\n${titles[kind]} (${list.length}):\n` +
+    list.map((n, i) => `${i + 1}. ${n}`).join('\n');
+  copyText(text, 'Скопійовано: ' + titles[kind].toLowerCase());
+};
 acts.shareReport = b => {
   const date = b.dataset.date, text = reportText(date, peek(date).saved);
   if (navigator.share) navigator.share({ text }).catch(() => {});
-  else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Звіт скопійовано'), () => {});
+  else copyText(text, 'Звіт скопійовано');
 };
 
 /* ---------- оцінки ---------- */

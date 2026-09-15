@@ -15,7 +15,7 @@
 :root{
   --bg:#EEF2F0; --surface:#FFFFFF; --raise:#F7FAF8; --ink:#15201B; --muted:#5B6A63; --line:#D9E1DD;
   --accent:#0B7A55; --accent-ink:#FFFFFF; --accent-soft:#DCEFE6;
-  --bad:#C8372A; --bad-soft:#FBE4E1; --warn:#A96400; --warn-soft:#FBEED6; --none:#9AA8A1;
+  --bad:#C8372A; --bad-soft:#FBE4E1; --warn:#A96400; --warn-soft:#FBEED6; --none:#9AA8A1; --late:#2B64B8; --late-soft:#E3ECF9;
   --display:"Bahnschrift SemiCondensed","Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
   --body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   color-scheme:light;
@@ -24,14 +24,14 @@
   :root:not([data-theme="light"]){
     --bg:#0D1311; --surface:#161F1B; --raise:#1C2722; --ink:#E6EEEA; --muted:#92A29B; --line:#2A3631;
     --accent:#3DBE8C; --accent-ink:#06140E; --accent-soft:#193328;
-    --bad:#FF6E60; --bad-soft:#3A1D1A; --warn:#F0A73A; --warn-soft:#352812; --none:#5E6C66;
+    --bad:#FF6E60; --bad-soft:#3A1D1A; --warn:#F0A73A; --warn-soft:#352812; --none:#5E6C66; --late:#7AA7F0; --late-soft:#172A45;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0D1311; --surface:#161F1B; --raise:#1C2722; --ink:#E6EEEA; --muted:#92A29B; --line:#2A3631;
   --accent:#3DBE8C; --accent-ink:#06140E; --accent-soft:#193328;
-  --bad:#FF6E60; --bad-soft:#3A1D1A; --warn:#F0A73A; --warn-soft:#352812; --none:#5E6C66;
+  --bad:#FF6E60; --bad-soft:#3A1D1A; --warn:#F0A73A; --warn-soft:#352812; --none:#5E6C66; --late:#7AA7F0; --late-soft:#172A45;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -60,6 +60,7 @@ button{cursor:pointer}
 .kv dd{margin:0;font-weight:600}
 .kv dd.bad{color:var(--bad)}
 .kv dd.warn{color:var(--warn)}
+.kv dd.late{color:var(--late)}
 .kv dd.ok{color:var(--accent)}
 .datebar{display:grid;grid-template-columns:44px 1fr 44px;gap:8px;align-items:center}
 .iconbtn{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--raise);font-size:22px;line-height:1}
@@ -88,6 +89,9 @@ main{padding-block:14px}
 .chip.ok{background:var(--accent-soft);color:var(--accent)}
 .chip.bad{background:var(--bad-soft);color:var(--bad)}
 .chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.late{background:var(--late-soft);color:var(--late)}
+.alert.late{background:var(--late-soft)}
+.alert.late h3{color:var(--late)}
 
 /* alert */
 .alert{border-radius:14px;padding:12px 14px;background:var(--bad-soft);color:var(--ink);display:flex;flex-direction:column;gap:6px}
@@ -119,6 +123,7 @@ main{padding-block:14px}
 .mark.p{border:0;background:var(--accent);color:var(--accent-ink)}
 .mark.a{border:0;background:var(--bad);color:#fff}
 .mark.l{border:0;background:var(--warn);color:#fff}
+.mark.z{border:0;background:var(--late);color:var(--surface)}
 .mark.g{border:0;background:var(--ink);color:var(--surface);font-size:18px}
 .subhead{padding:8px 12px;background:var(--raise);border-bottom:1px solid var(--line)}
 
@@ -149,6 +154,7 @@ table.j th.nm{position:sticky;left:0;z-index:2;background:var(--surface);text-al
 table.j thead th.nm{z-index:3;background:var(--raise)}
 table.j td.a{color:var(--bad);font-weight:700}
 table.j td.l{color:var(--warn);font-weight:700}
+table.j td.z{color:var(--late);font-weight:700}
 table.j td.g{font-weight:700}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .legend b{font-weight:700}
@@ -253,7 +259,7 @@ table.j td.g{font-weight:700}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -332,11 +338,13 @@ function stepLesson(s, dir) {
 }
 const day = s => K().days[s] || (K().days[s] = { start: {}, end: {}, grades: {} });
 const peek = s => K().days[s] || { start: {}, end: {}, grades: {} };
-// '' не відмічено, p присутній, a відсутній, l пішов з уроку (був на початку, нема в кінці)
+// '' не відмічено, p присутній, a відсутній, l пішов з уроку (був на початку, нема в кінці),
+// z запізнився (не було на початку, є в кінці)
 function status(s, id) {
-  const d = peek(s), v = d.start[id];
+  const d = peek(s), v = d.start[id], atEnd = d.end[id] === true;
+  if (v === true) return Object.keys(d.end).length && !atEnd ? 'l' : 'p';
+  if (atEnd) return 'z';
   if (v === false) return 'a';
-  if (v === true) return Object.keys(d.end).length && d.end[id] !== true ? 'l' : 'p';
   return '';
 }
 
@@ -487,33 +495,37 @@ function renderRoll() {
     } else {
       const begun = Object.keys(d.end).length > 0;
       const miss = present.filter(s => d.end[s.id] !== true);
+      const absent = st.filter(s => d.start[s.id] !== true), late = absent.filter(s => d.end[s.id] === true);
       h += `<div class="board"><div><div class="label">На місці</div><div class="score">${present.length - miss.length}<em> / ${present.length}</em></div></div>
-        <div class="meta"><div class="tally">${begun ? (miss.length ? `<span class="chip bad">немає ${miss.length}</span>` : '<span class="chip ok">всі на місці</span>') : '<span class="chip warn">ще не перевірено</span>'}</div>
-        <span>з тих, хто був на початку</span></div></div>`;
+        <div class="meta"><div class="tally">${begun ? (miss.length ? `<span class="chip bad">немає ${miss.length}</span>` : '<span class="chip ok">всі на місці</span>') : '<span class="chip warn">ще не перевірено</span>'}${late.length ? `<span class="chip late">запізнились ${late.length}</span>` : ''}</div>
+        <span>з тих, хто був на початку</span></div></div>
+        <div class="actions"><button class="btn primary" data-act="allEnd">Всі на місці</button>
+        <button class="btn danger small" data-act="resetEnd">Скинути</button></div>
+        ${searchBox('roll')}
+        <div class="label">Торкніться учня, який є в кінці уроку</div>
+        <ul class="list">` + present.map(s => {
+          const v = d.end[s.id] === true;
+          return studentRow(s, st.indexOf(s), 'tEnd', v ? mk('p', '✓') : begun ? mk('l', 'нема') : mk('', '—'));
+        }).join('');
+      if (absent.length) {
+        h += `<li class="subhead label">Не було на початку · торкніться, якщо учень прийшов пізніше</li>` +
+          absent.map(s => {
+            const came = d.end[s.id] === true;
+            return studentRow(s, st.indexOf(s), 'tEnd', came ? mk('z', 'запізн.') : d.start[s.id] === false ? mk('a', 'н') : mk('', '—'),
+              came ? 'запізнився на урок' : null, !came);
+          }).join('');
+      }
+      h += '</ul>' + emptyNote;
+      // Підсумок і збереження під списком, щоб список не стрибав під час відмічання
       if (begun) {
         h += miss.length
           ? `<div class="alert" role="status"><h3>Немає на перекличці: ${miss.length}</h3><ol>${miss.map(s => `<li>${esc(nm(s.name).a)}</li>`).join('')}</ol></div>`
           : `<div class="alert good" role="status"><h3>Усі, хто був на початку, на місці</h3></div>`;
       }
+      if (late.length) {
+        h += `<div class="alert late"><h3>Запізнилися: ${late.length}</h3><ol>${late.map(s => `<li>${esc(nm(s.name).a)}</li>`).join('')}</ol></div>`;
+      }
       h += saveBlock(ui.date);
-      h += `<div class="actions"><button class="btn primary" data-act="allEnd">Всі на місці</button>
-        <button class="btn danger small" data-act="resetEnd">Скинути</button></div>
-        ${searchBox('roll')}
-        <div class="label">Торкніться учня, який є в кінці уроку</div>
-        <ul class="list">` + present.map((s, i) => {
-          const v = d.end[s.id] === true;
-          return studentRow(s, st.indexOf(s), 'tEnd', v ? mk('p', '✓') : begun ? mk('l', 'нема') : mk('', '—'));
-        }).join('');
-      const absent = st.filter(s => d.start[s.id] !== true);
-      if (absent.length) {
-        h += `<li class="subhead label">Не було на початку уроку</li>` +
-          absent.map(s => studentRow(s, st.indexOf(s), '', d.start[s.id] === false ? mk('a', 'н') : mk('', '—'), null, true)).join('');
-      }
-      h += '</ul>' + emptyNote;
-      const sv = d.saved;
-      if (!sv || !sameSnap(sv, lessonSnapshot(ui.date))) {
-        h += `<button class="btn primary" data-act="saveLesson">${sv ? 'Оновити збереження уроку' : 'Зберегти урок'}</button>`;
-      }
     }
   }
   $('#view-roll').innerHTML = h;
@@ -544,7 +556,7 @@ acts.tEnd = b => {
   const d = day(ui.date), id = b.dataset.id;
   d.end[id] = d.end[id] !== true;
   save();
-  if (clearSearch('roll')) toast(nameOf(id) + (d.end[id] ? ': є в кінці уроку' : ': немає в кінці уроку'));
+  if (clearSearch('roll')) toast(nameOf(id) + (d.end[id] ? (d.start[id] === true ? ': є в кінці уроку' : ': запізнився') : ': немає в кінці уроку'));
   else render();
 };
 acts.allEnd = () => { const d = day(ui.date); active().forEach(s => { if (d.start[s.id] === true) d.end[s.id] = true; }); save(); render(); };
@@ -554,30 +566,34 @@ acts.resetEnd = () => { if (confirm('Скинути перекличку в кі
 function lessonSnapshot(date) {
   const d = peek(date), st = active(), endChecked = Object.keys(d.end).length > 0;
   const names = f => st.filter(f).map(s => s.name);
-  return {
+  const snap = {
     total: st.length,
     present: st.filter(s => d.start[s.id] === true).length,
-    absent: names(s => d.start[s.id] === false),
+    absent: names(s => d.start[s.id] === false && d.end[s.id] !== true),
     left: endChecked ? names(s => d.start[s.id] === true && d.end[s.id] !== true) : [],
-    unmarked: names(s => d.start[s.id] === undefined),
+    unmarked: names(s => d.start[s.id] === undefined && d.end[s.id] !== true),
     endChecked
   };
+  // Поле «late» лише коли хтось запізнився: старі збереження не вважаються зміненими
+  const late = names(s => d.start[s.id] !== true && d.end[s.id] === true);
+  if (late.length) snap.late = late;
+  return snap;
 }
 const sameSnap = (a, b) => JSON.stringify(Object.assign({}, a, { at: 0 })) === JSON.stringify(Object.assign({}, b, { at: 0 }));
 const timeOf = ts => new Date(ts).toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
-const allHere = r => r.endChecked && !r.absent.length && !r.left.length && !r.unmarked.length;
+const allHere = r => r.endChecked && !r.absent.length && !r.left.length && !r.unmarked.length && !(r.late || []).length;
 
 function reportHtml(r) {
   const row = (k, list, c) => list.length ? `<dt>${k}: ${list.length}</dt><dd class="${c}">${list.map(n => esc(nm(n).a)).join(', ')}</dd>` : '';
   return `<dl class="kv"><dt>Присутні</dt><dd>${r.present} з ${r.total}</dd>` +
-    row('Відсутні', r.absent, 'bad') + row('Пішли з уроку', r.left, 'warn') + row('Не відмічені', r.unmarked, '') +
+    row('Відсутні', r.absent, 'bad') + row('Запізнилися', r.late || [], 'late') + row('Пішли з уроку', r.left, 'warn') + row('Не відмічені', r.unmarked, '') +
     (allHere(r) ? '<dt>Підсумок</dt><dd class="ok">Усі учні були на всьому уроці</dd>' : '') +
     (r.endChecked ? '' : '<dt>Увага</dt><dd class="warn">Кінець уроку не перевірявся</dd>') + '</dl>';
 }
 function reportText(date, r) {
   const L = [`${K().name} · Фізична культура · ${long(date)} ${date.slice(0, 4)}`, `Присутні: ${r.present} з ${r.total}`];
   const add = (k, list) => { if (list.length) L.push(`${k} (${list.length}): ${list.map(n => nm(n).a).join(', ')}`); };
-  add('Відсутні', r.absent); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked);
+  add('Відсутні', r.absent); add('Запізнилися', r.late || []); add('Пішли з уроку', r.left); add('Не відмічені', r.unmarked);
   if (allHere(r)) L.push('Усі учні були на всьому уроці.');
   if (!r.endChecked) L.push('Кінець уроку не перевірявся.');
   return L.join('\n');
@@ -589,15 +605,15 @@ function saveBlock(date) {
       <button class="btn" data-act="shareReport" data-date="${date}">Поділитися звітом</button></div>`;
   }
   return `<div class="card"><div class="label">${sv ? 'Після збереження були зміни' : 'Урок ще не збережено'}</div>
-    <p>Зберігає звіт уроку: скільки було учнів, кого не було і хто пішов до кінця уроку.</p>
+    <p>Зберігає звіт уроку: скільки було учнів, кого не було, хто запізнився і хто пішов до кінця уроку.</p>
     <button class="btn primary" data-act="saveLesson">${sv ? 'Оновити збереження уроку' : 'Зберегти урок'}</button></div>`;
 }
 acts.saveLesson = () => {
   const snap = lessonSnapshot(ui.date);
-  if (!snap.present && !snap.absent.length) return toast('Спочатку відмітьте учнів на початку уроку');
+  if (!snap.present && !snap.absent.length && !snap.late) return toast('Спочатку відмітьте учнів на початку уроку');
   if (!snap.endChecked && !confirm('Кінець уроку ще не перевірено. Зберегти лише перекличку на початку?')) return;
   day(ui.date).saved = Object.assign(snap, { at: Date.now() });
-  save(); render(); scrollTo({ top: 0, behavior: 'smooth' }); toast('Урок збережено');
+  save(); render(); toast('Урок збережено');
 };
 acts.shareReport = b => {
   const date = b.dataset.date, text = reportText(date, peek(date).saved);
@@ -610,7 +626,7 @@ function renderGrades() {
   const d = peek(ui.date), st = active();
   const vals = st.map(s => +d.grades[s.id]).filter(n => n >= 1 && n <= 12);
   const avg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1).replace('.', ',') : '—';
-  const subs = { a: 'відсутній на уроці', l: 'пішов з уроку' };
+  const subs = { a: 'відсутній на уроці', l: 'пішов з уроку', z: 'запізнився на урок' };
   $('#view-grades').innerHTML = `<div class="board"><div><div class="label">Оцінено</div><div class="score">${vals.length}<em> / ${st.length}</em></div></div>
     <div class="meta"><span class="chip">середній бал ${avg}</span><span>12-бальна шкала</span></div></div>
     ${searchBox('grades')}
@@ -891,8 +907,8 @@ function buildPrint() {
 /* ---------- журнал ---------- */
 const MN = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 const lessonDates = () => Object.keys(K().days).filter(k => Object.keys(K().days[k].start).length || Object.keys(K().days[k].grades).length).sort();
-function cell(date, id) { const g = peek(date).grades[id], s = status(date, id); return g || (s === 'a' ? 'н' : s === 'l' ? 'п' : ''); }
-const cls = v => v === 'н' ? 'a' : v === 'п' ? 'l' : v ? 'g' : '';
+function cell(date, id) { const g = peek(date).grades[id], s = status(date, id); return g || ({ a: 'н', l: 'п', z: 'з' })[s] || ''; }
+const cls = v => ({ 'н': 'a', 'п': 'l', 'з': 'z' })[v] || (v ? 'g' : '');
 function avgOf(dates, id) {
   const v = dates.map(d => +peek(d).grades[id]).filter(n => n >= 1 && n <= 12);
   return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : '';
@@ -914,7 +930,7 @@ function renderJournal() {
         md.map(x => { const v = cell(x, s.id); return `<td class="${cls(v)}">${esc(v)}</td>`; }).join('') +
         `<td class="a">${md.filter(x => status(x, s.id) === 'a').length || ''}</td><td class="g">${String(avgOf(md, s.id)).replace('.', ',')}</td></tr>`).join('') +
       `</tbody></table></div>
-      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
+      <div class="legend"><span><b style="color:var(--bad)">н</b> — відсутній</span><span><b style="color:var(--late)">з</b> — запізнився</span><span><b style="color:var(--warn)">п</b> — пішов з уроку</span><span><b>зв</b> — звільнений</span><span>число — оцінка</span></div>`;
   }
   const savedDates = dates.filter(x => peek(x).saved).reverse();
   if (savedDates.length) {
@@ -922,6 +938,7 @@ function renderJournal() {
       const r = peek(x).saved;
       return `<button data-act="jgo" data-date="${x}"><span><b>${short(x)}</b> ${WD[parse(x).getDay()]} · присутні ${r.present}/${r.total}</span><span class="tally">` +
         (r.absent.length ? `<span class="chip bad">н ${r.absent.length}</span>` : '') +
+        ((r.late || []).length ? `<span class="chip late">з ${r.late.length}</span>` : '') +
         (r.left.length ? `<span class="chip warn">п ${r.left.length}</span>` : '') +
         (allHere(r) ? '<span class="chip ok">усі</span>' : '') + '</span></button>';
     }).join('') + '</div></div>';
@@ -1083,26 +1100,27 @@ const num = v => /^\d+$/.test(v) ? +v : v;
 
 function classSheets() {
   const st = active(), dates = lessonDates();
-  const journal = [['№', 'Прізвище, ім’я, по батькові', ...dates.map(short), 'Пропуски (н)', 'Пішов з уроку (п)', 'Середній бал']];
+  const journal = [['№', 'Прізвище, ім’я, по батькові', ...dates.map(short), 'Пропуски (н)', 'Запізнився (з)', 'Пішов з уроку (п)', 'Середній бал']];
   st.forEach((s, i) => journal.push([i + 1, s.name, ...dates.map(x => num(cell(x, s.id))),
-    dates.filter(x => status(x, s.id) === 'a').length, dates.filter(x => status(x, s.id) === 'l').length, avgOf(dates, s.id)]));
+    dates.filter(x => status(x, s.id) === 'a').length, dates.filter(x => status(x, s.id) === 'z').length,
+    dates.filter(x => status(x, s.id) === 'l').length, avgOf(dates, s.id)]));
   const roll = [['Дата', 'День', '№', 'Учень', 'Початок уроку', 'Кінець уроку', 'Оцінка']];
   dates.forEach(x => {
     const d = peek(x), begun = Object.keys(d.end).length > 0;
     st.forEach((s, i) => {
       const v = d.start[s.id];
       roll.push([short(x) + '.' + x.slice(0, 4), WD[parse(x).getDay()], i + 1, s.name,
-        v === true ? 'є' : v === false ? 'н' : '', v === true ? (d.end[s.id] === true ? 'є' : begun ? 'нема' : '') : '', num(d.grades[s.id] || '')]);
+        v === true ? 'є' : v === false ? 'н' : '', v === true ? (d.end[s.id] === true ? 'є' : begun ? 'нема' : '') : d.end[s.id] === true ? 'запізнився' : '', num(d.grades[s.id] || '')]);
     });
   });
   const safety = [['Дата', 'Тема інструктажу', 'Провів', '№', 'Учень', 'Підпис учня', 'Підпис учителя']];
   [...K().safety].sort((a, b) => a.date.localeCompare(b.date)).forEach(r =>
     st.forEach((s, i) => safety.push([short(r.date) + '.' + r.date.slice(0, 4), r.topic, r.by || '', i + 1, s.name,
       r.signs[s.id] ? 'підписано' : '—', r.tsign && r.tsign[s.id] ? 'підписано' : '—'])));
-  const reports = [['Дата', 'День', 'Присутні', 'Усього', 'Відсутні', 'Пішли з уроку', 'Не відмічені', 'Збережено о']];
+  const reports = [['Дата', 'День', 'Присутні', 'Усього', 'Відсутні', 'Запізнилися', 'Пішли з уроку', 'Не відмічені', 'Збережено о']];
   dates.filter(x => peek(x).saved).forEach(x => {
     const r = peek(x).saved, short2 = list => list.map(n => nm(n).a).join(', ');
-    reports.push([short(x) + '.' + x.slice(0, 4), WD[parse(x).getDay()], r.present, r.total, short2(r.absent), short2(r.left), short2(r.unmarked), timeOf(r.at)]);
+    reports.push([short(x) + '.' + x.slice(0, 4), WD[parse(x).getDay()], r.present, r.total, short2(r.absent), short2(r.late || []), short2(r.left), short2(r.unmarked), timeOf(r.at)]);
   });
   return { journal, roll, safety, reports, dates };
 }
@@ -1113,7 +1131,7 @@ acts.xlsx = () => {
   S.classes.forEach(c => {
     S.cur = c.id;
     const t = classSheets();
-    sheets.push({ name: ('Журнал ' + c.name).replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31), rows: t.journal, widths: [5, 36, ...t.dates.map(() => 7), 12, 16, 12], fx: 2, fy: 1 });
+    sheets.push({ name: ('Журнал ' + c.name).replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31), rows: t.journal, widths: [5, 36, ...t.dates.map(() => 7), 12, 14, 16, 12], fx: 2, fy: 1 });
     for (const k in merged) {
       if (!merged[k]) merged[k] = [['Клас', ...t[k][0]]];
       t[k].slice(1).forEach(r => merged[k].push([c.name, ...r]));
@@ -1121,7 +1139,7 @@ acts.xlsx = () => {
   });
   S.cur = cur;
   sheets.push(
-    { name: 'Звіти уроків', rows: merged.reports, widths: [8, 12, 6, 10, 8, 40, 30, 30, 12], fx: 0, fy: 1 },
+    { name: 'Звіти уроків', rows: merged.reports, widths: [8, 12, 6, 10, 8, 40, 30, 30, 30, 12], fx: 0, fy: 1 },
     { name: 'Перекличка', rows: merged.roll, widths: [8, 12, 6, 5, 36, 14, 14, 9], fx: 0, fy: 1 },
     { name: 'Інструктажі', rows: merged.safety, widths: [8, 12, 50, 20, 5, 36, 12, 14], fx: 0, fy: 1 }
   );

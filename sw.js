@@ -1,6 +1,6 @@
 // Кешує журнал на телефоні, щоб він відкривався без інтернету.
 // Після зміни файлів журналу збільште номер версії.
-const CACHE = 'zhurnal-fk-v5';
+const CACHE = 'zhurnal-fk-v6';
 const FILES = ['./', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -16,18 +16,33 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Спочатку з кешу (працює офлайн), паралельно тихо оновлюємо з мережі.
+// Сторінка журналу: спершу мережа (щоб оновлення з'являлись одразу),
+// але не довше 3 секунд — далі береться збережена копія. Решта файлів — з кешу.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  const key = e.request.mode === 'navigate' ? './' : e.request;
-  const update = caches.open(CACHE).then(c =>
-    fetch(e.request).then(r => {
-      if (r.ok && !r.redirected) c.put(key, r.clone());
-      return r;
-    })
-  );
+
+  if (e.request.mode === 'navigate') {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const net = fetch(e.request).then(r => {
+        if (r.ok && !r.redirected) cache.put('./', r.clone());
+        return r;
+      });
+      const timeout = new Promise(res => setTimeout(res, 3000));
+      try {
+        const r = await Promise.race([net, timeout]);
+        if (r) return r;
+      } catch (err) {}
+      e.waitUntil(net.catch(() => {}));
+      return (await cache.match('./')) || net;
+    })());
+    return;
+  }
+
   e.respondWith(
-    caches.match(key, { ignoreSearch: true }).then(hit => hit || update)
+    caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(r => {
+      if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone()));
+      return r;
+    }))
   );
-  e.waitUntil(update.catch(() => {}));
 });

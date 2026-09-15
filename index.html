@@ -253,6 +253,7 @@ table.j td.g{font-weight:700}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
+const APP_VERSION = 6;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -676,6 +677,7 @@ function renderSafety() {
       <div class="field"><label class="label" for="sfBy">Провів (учитель)</label>
         <input id="sfBy" type="text" value="${esc(S.settings.teacher || '')}" placeholder="Прізвище І. П."></div>
       <button class="btn primary" data-act="safetyNew">Провести інструктаж ${short(ui.date)}</button></div>`;
+    h += teacherCard(null, st);
   } else {
     const signed = st.filter(s => rec.signs[s.id]).length, left = st.length - signed;
     h += `<div class="board"><div><div class="label">Підписали</div><div class="score">${signed}<em> / ${st.length}</em></div></div>
@@ -704,10 +706,15 @@ function renderSafety() {
 
 const plural = n => n % 10 === 1 && n % 100 !== 11 ? 'учень' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'учні' : 'учнів';
 function teacherCard(rec, st) {
-  const tsig = S.settings.tsig, all = !!S.settings.tsignAll, done = rec.tsign || {};
+  const tsig = S.settings.tsig, all = !!S.settings.tsignAll, done = (rec && rec.tsign) || {};
   if (!tsig) {
     return `<div class="card"><h2>Підпис учителя</h2><p>Створіть свій підпис один раз, а потім ставте його біля учнів однією кнопкою.</p>
-      <button class="btn" data-act="tsigEdit">Створити мій підпис</button></div>`;
+      <button class="btn primary" data-act="tsigEdit">Створити мій підпис</button></div>`;
+  }
+  if (!rec) {
+    return `<div class="card"><div class="tally" style="justify-content:space-between;align-items:center"><h2>Підпис учителя</h2><span class="sig">${svgSig(tsig)}</span></div>
+      <p>Поставити підпис біля учнів можна після того, як проведете інструктаж.</p>
+      <div class="actions"><button class="btn small" data-act="tsigEdit">Змінити мій підпис</button></div></div>`;
   }
   const todo = st.filter(s => (rec.signs[s.id] || all) && !done[s.id]).length, has = st.some(s => done[s.id]);
   return `<div class="card"><div class="tally" style="justify-content:space-between;align-items:center"><h2>Підпис учителя</h2><span class="sig">${svgSig(tsig)}</span></div>
@@ -923,6 +930,7 @@ function renderJournal() {
   h += `<div class="card"><h2>Збереження даних</h2>
     <p>Журнал зберігається лише на цьому телефоні. Раз на тиждень робіть резервну копію і зберігайте її поза телефоном: у Telegram («Збережене») або в iCloud Drive. Відновити журнал можна лише з резервної копії, Excel для цього не підходить.</p>
     <p id="usage"></p>
+    <p class="label" style="margin:0">Версія журналу ${APP_VERSION}</p>
     <div class="tally" style="justify-content:flex-start"><span class="chip ${lb ? 'ok' : 'warn'}">${lb ? 'остання копія ' + short(lb) : 'копію ще не робили'}</span></div>
     <div class="actions"><button class="btn primary" data-act="xlsx">Експорт в Excel</button><button class="btn" data-act="backup">Резервна копія</button></div>
     <button class="btn" data-act="restore">Відкрити файл: копія або списки класів</button>

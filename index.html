@@ -144,6 +144,11 @@ details.card[open] summary h2::after{content:" ▴"}
 .field{display:flex;flex-direction:column;gap:4px}
 .field input,.field select,.field textarea{width:100%;min-height:44px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--raise)}
 .field textarea{min-height:180px;resize:vertical;line-height:1.5}
+/* iPhone: поле дати має власну мінімальну ширину і вилазить за картку */
+.field{min-width:0}
+input[type="date"]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left}
+input[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
+.remfrom input{flex:0 1 auto}
 .hist{display:flex;flex-direction:column}
 .hist button{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;border:0;border-top:1px solid var(--line);background:transparent;text-align:left;padding:6px 0}
 .hist button:first-child{border-top:0}
@@ -297,7 +302,7 @@ table.ej td.g{font-weight:700;font-size:14px}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

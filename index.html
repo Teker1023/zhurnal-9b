@@ -212,6 +212,10 @@ table.ej td.g{font-weight:700;font-size:14px}
 .pad button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .lvl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:-4px}
 .signbox{position:relative;border-radius:12px;border:1.5px dashed var(--line);background:var(--raise);touch-action:none;aspect-ratio:3/1;width:100%;max-width:100%}
+/* iPhone: затискання пальцем не виділяє текст і не відкриває меню копіювання */
+.sheet.full,.sheet.full *,button,.row,.tabs,.classes{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.gearbtn{flex:0 0 auto;width:38px;height:38px;display:grid;place-items:center;border-radius:99px;border:1px solid var(--line);background:var(--raise);color:var(--muted);padding:0}
+.gearbtn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .signbox canvas{position:absolute;inset:0;width:100%;height:100%}
 .signbox .base{position:absolute;left:8%;right:8%;bottom:26%;border-bottom:1px solid var(--none);pointer-events:none}
 /* поле підпису на весь екран */
@@ -267,7 +271,7 @@ table.ej td.g{font-weight:700;font-size:14px}
 <body>
 <header class="top">
   <div class="wrap">
-    <div class="brand"><div class="classes" id="classes" role="tablist" aria-label="Клас"></div><span id="saved"></span></div>
+    <div class="brand"><div class="classes" id="classes" role="tablist" aria-label="Клас"></div><button class="gearbtn" id="classCfg" aria-label="Налаштування класу: дні уроків, учні" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button><span id="saved"></span></div>
     <div class="datebar">
       <button class="iconbtn" id="prev" aria-label="Попередній урок">‹</button>
       <label class="datebtn"><span id="dateLabel">—</span><small id="dateTag">урок</small>
@@ -302,7 +306,7 @@ table.ej td.g{font-weight:700;font-size:14px}
 <script>
 // Дані: v2 = кілька класів. Старий ключ читається один раз для переносу даних 9-Б.
 const KEY = 'journal-pe-v2', OLD_KEY = 'journal-9b-pe-v1';
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -423,11 +427,13 @@ function renderHeader() {
   cl.innerHTML = S.classes.map(c => `<button role="tab" data-class="${c.id}" aria-selected="${c.id === K().id}">${esc(c.name)}</button>`).join('') +
     '<button class="add" data-class="+" aria-label="Додати клас">+</button>';
   cl.scrollLeft = sl;
+  $('#classCfg').hidden = !S.classes.length;
   $('#dateLabel').textContent = long(ui.date);
   tag.textContent = !L ? 'поза розкладом' : today ? 'сьогодні' : 'урок';
   tag.className = L ? '' : 'off';
   $('#dateInput').value = ui.date;
 }
+$('#classCfg').onclick = () => classSettingsSheet();
 $('#prev').onclick = () => { ui.date = stepLesson(ui.date, -1); render(); };
 $('#next').onclick = () => { ui.date = stepLesson(ui.date, 1); render(); };
 $('#classes').addEventListener('click', e => {
@@ -964,6 +970,10 @@ function signPad(o) {
   });
   const up = () => { cur = null; };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  // iPhone: затискання не виділяє текст і не відкриває лупу/меню
+  ['touchstart', 'touchmove'].forEach(t => cv.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  sh.addEventListener('selectstart', e => e.preventDefault());
+  sh.addEventListener('contextmenu', e => e.preventDefault());
 
   sh.onclick = e => {
     const b = e.target.closest('[data-s]');
@@ -1160,15 +1170,9 @@ function renderJournal() {
     <div class="actions"><button class="btn primary" data-act="xlsx">Експорт в Excel</button><button class="btn" data-act="backup">Резервна копія</button></div>
     <button class="btn" data-act="restore">Відкрити файл: копія або списки класів</button>
     <input type="file" id="restoreFile" hidden></div>
-    <div class="card"><h2>Налаштування класу ${esc(K().name)}</h2>
-    <div class="field"><label class="label" for="className">Назва класу</label><input id="className" type="text" value="${esc(K().name)}"></div>
-    <div class="field"><span class="label">Дні уроків</span><div class="days">` +
-      [1, 2, 3, 4, 5, 6].map(n => `<label><input type="checkbox" name="wd" value="${n}"${K().weekdays.includes(n) ? ' checked' : ''}>${WD[n]}</label>`).join('') +
-    `</div></div>
-    <div class="field"><label class="label" for="stuText">Список учнів (по одному в рядку)</label>
-      <textarea id="stuText" spellcheck="false">${esc(st.map(s => s.name).join('\n'))}</textarea></div>
-    <button class="btn" data-act="saveStudents">Зберегти список учнів</button>
-    <button class="btn danger" data-act="delClass">Видалити клас ${esc(K().name)}</button></div>`;
+    <div class="card"><h2>Клас ${esc(K().name)}</h2>
+    <p>Дні уроків: ${K().weekdays.map(n => WD[n]).join(', ') || 'не обрано'} · учнів: ${st.length}</p>
+    <button class="btn" data-act="classSettings">Налаштування класу: дні уроків, учні</button></div>`;
   $('#view-journal').innerHTML = h;
   // Прокрутити таблицю до вибраної дати (або сьогодні)
   const wrap = $('#view-journal .ejwrap'), selTh = wrap && (wrap.querySelector('thead th.sel') || wrap.querySelector('thead th.today'));
@@ -1203,9 +1207,9 @@ acts.backup = () => {
   download(new Blob([JSON.stringify(S)], { type: 'application/json' }), 'Журнал ФК резервна копія ' + iso(new Date()) + '.json');
   render();
 };
-acts.saveStudents = b => {
-  const lines = b.closest('.view').querySelector('textarea').value.split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
-  if (!lines.length) return toast('Список порожній');
+const toLines = text => text.split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
+// Новий список учнів: наявні учні зберігають свої дані, прибрані — в архів
+function setStudents(lines) {
   const used = new Set(), next = [];
   lines.forEach(n => {
     let s = K().students.find(x => x.name === n && !used.has(x.id));
@@ -1213,12 +1217,44 @@ acts.saveStudents = b => {
     used.add(s.id); next.push(s.remote ? { id: s.id, name: n, remote: s.remote } : { id: s.id, name: n });
   });
   K().students.forEach(s => { if (!used.has(s.id)) next.push({ id: s.id, name: s.name, archived: true }); });
-  K().students = next; save(); render(); toast('Список учнів збережено');
+  K().students = next;
+}
+acts.saveStudents = b => {
+  const lines = toLines(b.closest('.view').querySelector('textarea').value);
+  if (!lines.length) return toast('Список порожній');
+  setStudents(lines); save(); render(); toast('Список учнів збережено');
 };
+acts.classSettings = () => classSettingsSheet();
+
+function classSettingsSheet() {
+  const c = K();
+  if (!c.id) return classSheet();
+  const sh = openSheet(`<div><div class="label">Налаштування класу</div><h3>${esc(c.name)}</h3></div>
+    <div class="field"><label class="label" for="csName">Назва класу</label><input id="csName" type="text" value="${esc(c.name)}"></div>
+    <div class="field"><span class="label">Дні уроків</span><div class="days">` +
+      [1, 2, 3, 4, 5, 6].map(n => `<label><input type="checkbox" name="csWd" value="${n}"${c.weekdays.includes(n) ? ' checked' : ''}>${WD[n]}</label>`).join('') + `</div></div>
+    <div class="field"><label class="label" for="csList">Учні, по одному в рядку</label><textarea id="csList" spellcheck="false">${esc(active().map(s => s.name).join('\n'))}</textarea></div>
+    <div class="actions"><button class="btn" data-c="close">Скасувати</button><button class="btn primary" data-c="save">Зберегти</button></div>
+    <button class="btn danger" data-c="del">Видалити клас ${esc(c.name)}</button>`);
+  sh.onclick = e => {
+    const b = e.target.closest('[data-c]');
+    if (!b) return;
+    const a = b.dataset.c;
+    if (a === 'close') return closeSheet();
+    if (a === 'del') { closeSheet(); return acts.delClass(); }
+    const name = sh.querySelector('#csName').value.trim(), lines = toLines(sh.querySelector('#csList').value);
+    const wd = [...sh.querySelectorAll('input[name=csWd]:checked')].map(x => +x.value);
+    if (!name) return toast('Вкажіть назву класу');
+    if (S.classes.some(x => x !== c && x.name.toLowerCase() === name.toLowerCase())) return toast('Клас ' + name + ' уже є');
+    if (!wd.length) return toast('Оберіть хоча б один день уроків');
+    if (!lines.length) return toast('Список учнів порожній');
+    c.name = name; c.weekdays = wd; setStudents(lines);
+    save(); closeSheet(); render(); toast('Налаштування класу ' + name + ' збережено');
+  };
+}
 
 $('main').addEventListener('change', e => {
   const t = e.target;
-  if (t.id === 'className' && t.value.trim()) { K().name = t.value.trim(); save(); render(); }
   if (t.dataset.rem) {
     const s = K().students.find(x => x.id === t.dataset.rem), today = iso(new Date());
     s.remote = s.remote || [];
@@ -1246,7 +1282,6 @@ $('main').addEventListener('change', e => {
     save(); render(); toast('Дату інструктажу змінено: ' + long(rec.date));
   }
   if (t.id === 'sfTopic') $('#sfOtherWrap').hidden = t.value !== '__other';
-  if (t.name === 'wd') { K().weekdays = [...document.querySelectorAll('input[name=wd]:checked')].map(x => +x.value); save(); renderHeader(); }
   if (t.id === 'restoreFile' && t.files[0]) {
     const fr = new FileReader();
     fr.onload = () => {
